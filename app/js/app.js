@@ -110,7 +110,9 @@
     'COALESCE IFNULL NULLIF IIF TYPEOF HEX QUOTE DATE TIME DATETIME JULIANDAY STRFTIME UNIXEPOCH PRINTF FORMAT CAST CONVERT ROW_NUMBER RANK DENSE_RANK ' +
     'LAST_INSERT_ROWID CHANGES TOTAL_CHANGES SQLITE_VERSION CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP').split(/\s+/));
 
-  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 同时转义引号：esc 也用于 data-* / title 等属性值，列名、库名里的引号不能逃逸出属性
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
   function highlight(code) {
     let out = '', i = 0;
@@ -640,9 +642,15 @@
     const row = e.target.closest('.node');
     if (!row) return;
     e.preventDefault();
-    if (row._connId) { ctxData = { kind: 'conn', id: row._connId }; showConnCtx(e.clientX, e.clientY); return; }
-    if (!row._k) { ctxData = { kind: 'folder' }; showSimpleCtx(e.clientX, e.clientY); return; }
-    ctxData = row._k;
+    // 先判断对象节点：表 / 视图节点同样带有 _connId，若先判断 _connId 会一律落到「连接」菜单
+    if (!row._k) {
+      if (row.dataset.type === 'conn' || row.dataset.type === 'database') {
+        ctxData = { kind: 'conn', id: row._connId }; showConnCtx(e.clientX, e.clientY); return;
+      }
+      ctxData = { kind: 'folder' }; showSimpleCtx(e.clientX, e.clientY); return;
+    }
+    // 记下节点所属连接，执行菜单操作前切换过去，避免作用到当前活动连接的同名表
+    ctxData = Object.assign({}, row._k, { connId: row._connId });
     if (row._k.type === 'table') showTableCtx(e.clientX, e.clientY, row._k.name);
     else if (row._k.type === 'procedure' || row._k.type === 'function') showRoutineCtx(e.clientX, e.clientY, row._k);
     else showSimpleCtx(e.clientX, e.clientY);
@@ -732,28 +740,75 @@
     toast('已切换到 ' + db);
   }
 
+  /** 按当前连接方言引用标识符 */
+  function qid(name, c) { return S.quoteIdentFor(name, dialectOf(c || conn())); }
+  /** 按方言生成「取前 n 行」查询：MSSQL 用 TOP，其余用 LIMIT */
+  function selectTopSql(name, n, c) {
+    return dialectOf(c || conn()) === 'mssql'
+      ? 'SELECT TOP ' + n + ' * FROM ' + qid(name, c) + ';'
+      : 'SELECT * FROM ' + qid(name, c) + ' LIMIT ' + n + ';';
+  }
+
+  /**
+   * 右键表操作前的准备：切到该表所属连接与数据库，返回执行用的库名。
+   * 树里可能同时展开多个连接 / 多个库，菜单操作必须作用于被点中的那张表。
+   */
+  function useCtxTable(d) {
+    if (d.connId && d.connId !== state.activeConnId && state.conns.some(x => x.id === d.connId)) {
+      state.activeConnId = d.connId;
+      renderDocs(); updateStatus(); renderResult(); updateDbSwitcher();
+    }
+    const c = conn();
+    if (c && c.engineKind === 'remote' && d._db && c.engine.currentDatabase !== d._db) {
+      c.engine.setDatabase(d._db);
+      if (c.schema) c.schema.database = d._db;
+      updateStatus(); updateDbSwitcher();
+    }
+    return (c && c.engineKind === 'remote') ? (d._db || currentDbArg(c)) : undefined;
+  }
+
+  /** 执行一条写操作，失败时提示错误并返回 false（execSql 本身不抛异常） */
+  let lastExecError = '';
+  async function execOrToast(sql, label, db) {
+    const r = await execSql(sql, db ? { database: db } : undefined);
+    if (!r) { lastExecError = label + '失败：没有可用连接'; return false; }
+    if (r.error) { lastExecError = label + '失败：' + r.error; toast(lastExecError, true); return false; }
+    return true;
+  }
+
+  const TABLE_ACTIONS = new Set(['top1000', 'edit-data', 'script-select', 'script-insert',
+    'import-csv-table', 'export-csv-table', 'truncate', 'drop-table']);
+
   async function handleAction(a) {
     const d = ctxData || {};
+    const db = TABLE_ACTIONS.has(a) ? useCtxTable(d) : undefined;
     switch (a) {
       case 'new-query': newDoc(); break;
       case 'refresh': await doRefresh(); break;
-      case 'top1000': openTableQuery(d.name); break;
-      case 'edit-data': openTableQuery(d.name); break;
+      case 'top1000': openTableQuery(d.name, { database: d._db }); break;
+      case 'edit-data': openTableQuery(d.name, { database: d._db }); break;
       case 'show-ddl': showDdl(d._table && d._table.ddl, d.name); break;
-      case 'script-select': insertQuery('SELECT * FROM ' + S.quoteIdent(d.name) + ' LIMIT 100;'); break;
+      case 'script-select': insertQuery(selectTopSql(d.name, 100)); break;
       case 'script-create': showDdl(d._table && d._table.ddl || '-- 无 DDL', d.name + ' — CREATE 脚本', true); break;
-      case 'script-insert': await scriptInsert(d.name); break;
+      case 'script-insert': await scriptInsert(d.name, db); break;
       case 'export-db': await exportDb(); break;
       case 'run-script': pickFile('.sql,.txt', f => runScriptFile(f)); break;
-      case 'import-csv-table': pickFile('.csv,.txt', f => importCsvToTable(f, d.name)); break;
-      case 'export-csv-table': await exportTableCsv(d.name); break;
-      case 'truncate': await confirmThen('清空表', '将执行 DELETE FROM ' + S.quoteIdent(d.name) + '，删除所有行（可回滚前请确认）。', async () => {
-        await execSql('DELETE FROM ' + S.quoteIdent(d.name) + ';');
+      case 'import-csv-table': pickFile('.csv,.txt', f => importCsvToTable(f, d.name, db)); break;
+      case 'export-csv-table': await exportTableCsv(d.name, db); break;
+      case 'truncate': await confirmThen('清空表', '将执行 DELETE FROM ' + esc(qid(d.name)) + '，删除所有行（可回滚前请确认）。', async () => {
+        // 先刷新再提示：doRefresh 自己会弹「已刷新」，放在后面会盖掉结果提示
+        const okDel = await execOrToast('DELETE FROM ' + qid(d.name) + ';', '清空表', db);
+        if (okDel) await persistConn(conn());
         await doRefresh();
+        if (okDel) toast('已清空 ' + d.name);
+        else toast(lastExecError, true);
       }); break;
-      case 'drop-table': await confirmThen('删除表', '将执行 DROP TABLE ' + S.quoteIdent(d.name) + '，该操作不可撤销！', async () => {
-        await execSql('DROP TABLE ' + S.quoteIdent(d.name) + ';');
+      case 'drop-table': await confirmThen('删除表', '将执行 DROP TABLE ' + esc(qid(d.name)) + '，该操作不可撤销！', async () => {
+        const okDrop = await execOrToast('DROP TABLE ' + qid(d.name) + ';', '删除表', db);
+        if (okDrop) await persistConn(conn());
         await doRefresh();
+        if (okDrop) toast('已删除 ' + d.name);
+        else toast(lastExecError, true);
       }, true); break;
       case 'close-conn': await closeConnection(d.id, false); toast('连接已关闭'); break;
       case 'drop-conn': await confirmThen('删除连接', '将关闭连接并删除其保存在浏览器本地的数据库文件，不可恢复。', async () => {
@@ -825,7 +880,15 @@
 
   function insertQuery(sql) {
     if (!doc()) newDoc(sql);
-    else { const d = doc(); d.sql += (d.sql && !/\n$/.test(d.sql) ? '\n\n' : '') + sql; activateDoc(d.id); }
+    else {
+      const d = doc();
+      // 以编辑框里的最新内容为准追加，并同步写回编辑框——
+      // activateDoc 开头会用编辑框文本覆盖 d.sql，只改 d.sql 会让追加的 SQL 丢失
+      const cur = $('#sql').value;
+      d.sql = cur + (cur && !/\n$/.test(cur) ? '\n\n' : '') + sql;
+      $('#sql').value = d.sql;
+      activateDoc(d.id);
+    }
   }
   function showDdl(ddl, title, wide) {
     const text = ddl || '-- 该对象没有可用的 DDL';
@@ -1729,6 +1792,13 @@
         const w = rowWhere(d, rowIdx, q);
         const sql = 'UPDATE ' + q(d.editTable) + ' SET ' + q(colName) + ' = ? WHERE ' + w.where;
         const res = await e.run(sql, [val].concat(w.params), d.editDb || currentDbArg(c) || null);
+        // 0 行受影响：行定位条件没匹配到任何行（行已被删除 / 改动，或按全部列原值匹配时
+        // BLOB、日期精度、浮点数等原值无法精确比较）。此时不能假装成功改掉本地单元格。
+        if (!res || !(res.rowsAffected > 0)) {
+          toast('更新失败：没有行被修改（该行可能已被删除或修改，或无法按原值精确定位），已恢复原值', true);
+          renderResult();
+          return;
+        }
         const cur = doc();
         if (cur && cur.result) {
           const ci = cur.result.columns.indexOf(colName);
@@ -1989,8 +2059,8 @@
     } catch (e) { toast('导出失败：' + e.message, true); }
   }
 
-  async function exportTableCsv(name) {
-    const r = await execSql('SELECT * FROM ' + S.quoteIdent(name) + ';');
+  async function exportTableCsv(name, db) {
+    const r = await execSql('SELECT * FROM ' + qid(name) + ';', db ? { database: db } : undefined);
     if (!r || r.error) { toast('导出失败：' + ((r && r.error) || ''), true); return; }
     if (!r.sets.length) { toast('表为空', true); return; }
     const set = r.sets[r.sets.length - 1];
@@ -2022,15 +2092,23 @@
     return rows;
   }
 
-  async function importCsvToTable(file, tableName) {
+  async function importCsvToTable(file, tableName, db) {
     const text = await readFile(file, true);
     const rows = parseCsv(text).filter(r => r.length && !(r.length === 1 && r[0] === ''));
     if (!rows.length) { toast('CSV 为空', true); return; }
     const header = rows[0], data = rows.slice(1);
     const e = eng();
     if (!e) { toast('请先选择连接', true); return; }
-    const tbl = findTable(tableName);
-    const tableCols = tbl ? tbl.columns.map(c => c.name) : [];
+    const c0 = conn();
+    const tbl = findTable(tableName, db);
+    // 远程表的列是懒加载的，未展开过时 tbl.columns 为空，需要先读取
+    let colInfo = tbl && tbl.columns;
+    if (!colInfo && e.columns) {
+      try { colInfo = await e.columns(db, tableName); if (tbl) tbl.columns = colInfo; }
+      catch (err) { colInfo = null; }
+    }
+    const tableCols = colInfo ? colInfo.map(x => x.name) : [];
+    if (!tableCols.length) { toast('无法读取表 ' + tableName + ' 的列信息', true); return; }
     const cols = header.map(h => h.trim()).filter(Boolean);
     const useCols = cols.length && cols.every(c => tableCols.includes(c)) ? cols : tableCols;
 
@@ -2038,28 +2116,33 @@
       '共 <b>' + data.length + '</b> 行数据，将使用列：<br><span style="font-family:var(--font-mono);font-size:11px">' + esc(useCols.join(', ')) + '</span><br><br>数据将追加到现有表中。',
       async () => {
         const ph = useCols.map(() => '?').join(', ');
-        const sql = 'INSERT INTO ' + S.quoteIdent(tableName) + ' (' + useCols.map(S.quoteIdent).join(', ') + ') VALUES (' + ph + ')';
+        const sql = 'INSERT INTO ' + qid(tableName, c0) + ' (' + useCols.map(x => qid(x, c0)).join(', ') + ') VALUES (' + ph + ')';
         const idxs = useCols.map(c => cols.indexOf(c));
-        let ok = 0, fail = 0;
+        let ok = 0, fail = 0, firstErr = '';
+        // 只有浏览器内 SQLite（有 e.db）才包一层本地事务；远程引擎每条语句独立执行
+        const localTx = !!(e.db && e.db.run);
         busy(true, '正在导入…', '0 / ' + data.length);
         try {
-          e.db && e.db.run && e.db.run('BEGIN');
+          if (localTx) e.db.run('BEGIN');
           for (let i = 0; i < data.length; i++) {
             const vals = idxs.map(ix => {
               const v = ix >= 0 ? data[i][ix] : null;
               return v === '' || v === undefined ? null : v;
             });
-            try { e.run(sql, vals); ok++; } catch (err) { fail++; }
+            // 必须 await：远程引擎的 run 是异步的，不等待会并发发出全部请求且错误无法捕获
+            try { await e.run(sql, vals, db || null); ok++; }
+            catch (err) { fail++; if (!firstErr) firstErr = err && err.message ? err.message : String(err); }
             if (i % 200 === 0) { busy(true, '正在导入…', i + ' / ' + data.length); await new Promise(r => setTimeout(r, 0)); }
           }
-          e.db && e.db.run && e.db.run('COMMIT');
+          if (localTx) e.db.run('COMMIT');
         } catch (err) {
-          try { e.db && e.db.run && e.db.run('ROLLBACK'); } catch (x) { /* ignore */ }
+          try { if (localTx) e.db.run('ROLLBACK'); } catch (x) { /* ignore */ }
+          ok = 0; fail = data.length; firstErr = firstErr || (err && err.message) || String(err);
         }
         busy(false);
         await persistConn(conn());
         await doRefresh();
-        toast('导入完成：成功 ' + ok + ' 行' + (fail ? '，失败 ' + fail + ' 行' : ''), fail > 0);
+        toast('导入完成：成功 ' + ok + ' 行' + (fail ? '，失败 ' + fail + ' 行（首个错误：' + firstErr + '）' : ''), fail > 0);
       });
   }
 
@@ -2102,8 +2185,8 @@
     await runQuery();
   }
 
-  async function scriptInsert(name) {
-    const r = await execSql('SELECT * FROM ' + S.quoteIdent(name) + ' LIMIT 200;');
+  async function scriptInsert(name, db) {
+    const r = await execSql(selectTopSql(name, 200), db ? { database: db } : undefined);
     if (!r || r.error || !r.sets.length) { toast('无法生成脚本', true); return; }
     const set = r.sets[r.sets.length - 1];
     const q = v => v === null || v === undefined ? 'NULL'
@@ -2111,7 +2194,7 @@
         : "'" + String(v).replace(/'/g, "''") + "'";
     let out = '-- INSERT 脚本：' + name + '（前 ' + set.values.length + ' 行）\n';
     set.values.forEach(row => {
-      out += 'INSERT INTO ' + S.quoteIdent(name) + ' (' + set.columns.map(S.quoteIdent).join(', ') + ') VALUES (' + row.map(q).join(', ') + ');\n';
+      out += 'INSERT INTO ' + qid(name) + ' (' + set.columns.map(x => qid(x)).join(', ') + ') VALUES (' + row.map(q).join(', ') + ');\n';
     });
     showDdl(out, name + ' — INSERT 脚本', true);
   }

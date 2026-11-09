@@ -36,6 +36,20 @@ const MIME = {
   '.md': 'text/markdown; charset=utf-8'
 };
 
+/**
+ * 可公开访问的静态资源白名单：根目录 index.html 及 app/、demo/ 目录。
+ * 任一路径段以「.」开头（隐藏文件 / 目录）也一律拒绝。
+ */
+const PUBLIC_FILES = new Set(['/index.html']);
+const PUBLIC_DIRS = ['/app/', '/demo/'];
+function isPublicPath(p) {
+  if (p.includes('\0') || p.includes('\\')) return false;
+  const segs = p.split('/');
+  if (segs.some(x => x === '..' || x.startsWith('.'))) return false;
+  if (PUBLIC_FILES.has(p)) return true;
+  return PUBLIC_DIRS.some(d => p.startsWith(d));
+}
+
 /** 读取并解析 JSON 请求体 */
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -63,6 +77,12 @@ const server = http.createServer(async (req, res) => {
 
   /* ---------- API 路由 ---------- */
   if (pathname.startsWith('/api/')) {
+    // 读取请求体前先做跨源 / Host / Content-Type 校验
+    const bad = api.checkRequest(req);
+    if (bad) {
+      res.writeHead(bad.code, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ ok: false, error: bad.error }));
+    }
     let body = {};
     if (req.method === 'POST' || req.method === 'PUT') {
       try { body = await readBody(req); }
@@ -79,11 +99,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 静态资源同样校验 Host 头，防止 DNS Rebinding 页面读取本机文件
+  if (!api.isLoopbackHost(req.headers.host)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Forbidden');
+  }
+
   if (pathname === '/') pathname = '/index.html';
 
-  // 防目录穿越
+  // 只开放白名单内的前端资源；connections.json、.git、server/ 等一律不可访问
+  if (!isPublicPath(pathname)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('404 Not Found: ' + pathname);
+  }
+
+  // 防目录穿越：必须以「根目录 + 分隔符」开头，避免同级目录（如 SQLTOOL-bak）被前缀误放行
   const target = path.normalize(path.join(ROOT, pathname));
-  if (!target.startsWith(ROOT)) { res.writeHead(403); return res.end('Forbidden'); }
+  if (!target.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end('Forbidden'); }
 
   fs.stat(target, (err, stat) => {
     if (err || !stat.isFile()) {

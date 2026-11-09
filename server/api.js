@@ -7,6 +7,7 @@
 'use strict';
 
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const D = require('./drivers');
 
@@ -18,8 +19,38 @@ const MAX_BODY = 8 * 1024 * 1024;
 /** connId -> { driver, driverId, session, cfg, lastUsed, info } */
 const SESSIONS = new Map();
 
-let seq = 0;
-function newId() { return 'c' + (++seq).toString(36) + Date.now().toString(36); }
+/** 连接 ID 使用密码学随机 UUID，避免被跨站页面按时间窗口猜中后操作已建立的会话 */
+function newId() { return 'c' + crypto.randomUUID().replace(/-/g, ''); }
+
+/** Host 头必须是回环地址（防 DNS Rebinding） */
+const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
+function isLoopbackHost(host) { return LOOPBACK_HOST.test(String(host || '')); }
+
+/**
+ * 跨源请求防护（防 CSRF）。返回错误信息字符串，通过则返回 null。
+ *  1. Host 必须是回环地址；
+ *  2. 带 Origin 时必须与本服务同源（http://<Host>）；
+ *  3. 带 Sec-Fetch-Site 时只接受 same-origin / none；
+ *  4. POST / PUT 必须声明 Content-Type: application/json ——
+ *     跨站页面无法在不触发 CORS 预检的情况下发送该类型，而本服务不响应预检。
+ */
+function checkRequest(req) {
+  const host = String(req.headers.host || '');
+  if (!isLoopbackHost(host)) return { code: 403, error: '仅允许通过 127.0.0.1 访问' };
+  const origin = req.headers.origin;
+  if (origin !== undefined && origin !== 'http://' + host) {
+    return { code: 403, error: '拒绝跨源请求' };
+  }
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin' && site !== 'none') {
+    return { code: 403, error: '拒绝跨源请求' };
+  }
+  if (req.method === 'POST' || req.method === 'PUT') {
+    const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (ct !== 'application/json') return { code: 415, error: '请求必须使用 Content-Type: application/json' };
+  }
+  return null;
+}
 
 /* ----------------------------------------------------------
  * 各驱动的服务器信息查询
@@ -108,12 +139,9 @@ function sessionOf(res, connId) {
 
 /** 主入口：返回 true 表示已处理 */
 async function handle(req, res, pathname, body) {
-  // Host 头校验，防止 DNS Rebinding 访问到本服务
-  const host = String(req.headers.host || '');
-  if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)) {
-    fail(res, '仅允许通过 127.0.0.1 访问', 403);
-    return true;
-  }
+  // Host / Origin / Content-Type 校验（server.js 读取请求体前已校验一次，这里兜底）
+  const bad = checkRequest(req);
+  if (bad) { fail(res, bad.error, bad.code); return true; }
 
   try {
     /* ---------- 驱动列表 ---------- */
@@ -345,4 +373,4 @@ async function handle(req, res, pathname, body) {
   }
 }
 
-module.exports = { handle, MAX_BODY, closeAllSessions };
+module.exports = { handle, MAX_BODY, closeAllSessions, checkRequest, isLoopbackHost };

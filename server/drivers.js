@@ -73,14 +73,27 @@ function splitStatements(sql) {
     cur += c; i++;
   }
   out.push(cur);
+  // 只丢弃「纯注释 / 空白」的片段；以注释开头但后面还有语句的（如 "-- 说明\nSELECT 1"）必须保留
   return out
     .map(s => s.trim())
-    .filter(s => s && !/^(--|#|\/\*)/.test(s));
+    .filter(s => s && stripLeadingComments(s));
 }
 
-/** 去掉语句开头的注释，用于判断类型 */
+/** 去掉语句开头的注释，用于判断类型（行注释可以没有结尾换行，如片段最后一行） */
 function stripLeadingComments(s) {
-  return s.replace(/^(\s*(--[^\n]*\n|\/\*[\s\S]*?\*\/|#[^\n]*\n))+/g, '').trim();
+  return s.replace(/^(\s*(--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/|#[^\n]*(\n|$)))+/g, '').trim();
+}
+
+/**
+ * 给长连接挂 error 监听：pg Client / mysql2 Connection 在空闲时被服务端断开会触发 error 事件，
+ * 没有监听器时 Node 会把它当成未捕获异常直接让进程崩溃。这里只标记失效，下次查询时重连。
+ */
+function watchConn(emitter, holder, label) {
+  if (!emitter || typeof emitter.on !== 'function') return;
+  emitter.on('error', e => {
+    holder.broken = e || new Error('连接已断开');
+    console.warn('[' + label + '] 连接错误，已标记失效，下次查询时重连：' + (e && e.message ? e.message : e));
+  });
 }
 
 /* ==========================================================
@@ -103,6 +116,12 @@ const mysql = {
   },
 
   async connect(cfg) {
+    const session = { conn: null, database: cfg.database || null, cfg, broken: null };
+    session.conn = await this._open(cfg, session);
+    return session;
+  },
+
+  async _open(cfg, holder) {
     const mysql2 = await this.load();
     const conn = await mysql2.createConnection({
       host: cfg.host,
@@ -117,11 +136,22 @@ const mysql = {
       supportBigNumbers: true,
       bigNumberStrings: false
     });
-    return { conn, database: cfg.database || null };
+    watchConn(conn, holder, 'MySQL');
+    return conn;
+  },
+
+  /** 连接被服务端断开后（error 事件标记了 broken），重新建立连接 */
+  async _ensure(session) {
+    if (!session.broken) return session.conn;
+    try { session.conn.destroy(); } catch (e) { /* ignore */ }
+    session.broken = null;
+    session.conn = await this._open(session.cfg, session);
+    session.database = session.cfg.database || null;   // 新连接回到初始库，下面的 USE 逻辑会再切过去
+    return session.conn;
   },
 
   async query(session, sql, params, database) {
-    const conn = session.conn;
+    const conn = await this._ensure(session);
     // MySQL 用 USE 切换当前库（连接级状态）
     if (database && database !== session.database) {
       await conn.query('USE ' + '`' + String(database).replace(/`/g, '``') + '`');
@@ -161,14 +191,14 @@ const mysql = {
   },
 
   async databases(session) {
-    const [rows] = await session.conn.query({
+    const [rows] = await (await this._ensure(session)).query({
       sql: 'SHOW DATABASES', rowsAsArray: true
     });
     return rows.map(r => r[0]);
   },
 
   async schema(session, database) {
-    const [tabs] = await session.conn.query({
+    const [tabs] = await (await this._ensure(session)).query({
       sql: `SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS
             FROM information_schema.TABLES
             WHERE TABLE_SCHEMA = ?
@@ -188,7 +218,7 @@ const mysql = {
   },
 
   async columns(session, database, table) {
-    const [cols] = await session.conn.query({
+    const [cols] = await (await this._ensure(session)).query({
       sql: `SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.COLUMN_KEY, c.EXTRA
             FROM information_schema.COLUMNS c
             WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
@@ -211,7 +241,7 @@ const mysql = {
    * 一个库里几百个存储过程很常见，一次性把 CREATE 原文全拉回来既慢又占内存。
    */
   async routines(session, database) {
-    const [rows] = await session.conn.query({
+    const [rows] = await (await this._ensure(session)).query({
       sql: `SELECT ROUTINE_NAME, ROUTINE_TYPE, DTD_IDENTIFIER
             FROM information_schema.ROUTINES
             WHERE ROUTINE_SCHEMA = ?
@@ -238,7 +268,7 @@ const mysql = {
     // 限定库名，避免依赖连接当前的 USE 状态
     const target = database ? qi(database) + '.' + qi(name) : qi(name);
     try {
-      const [rows, fields] = await session.conn.query({
+      const [rows, fields] = await (await this._ensure(session)).query({
         sql: 'SHOW CREATE ' + (isProc ? 'PROCEDURE' : 'FUNCTION') + ' ' + target,
         rowsAsArray: true
       });
@@ -257,7 +287,7 @@ const mysql = {
         if (txt) return String(txt);
       }
     } catch (e) { /* 无权限时回退 information_schema */ }
-    const [r2] = await session.conn.query({
+    const [r2] = await (await this._ensure(session)).query({
       sql: `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES
             WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?`,
       values: [database, name, isProc ? 'PROCEDURE' : 'FUNCTION'], rowsAsArray: true
@@ -300,23 +330,46 @@ const postgres = {
     });
   },
 
-  async connect(cfg) {
-    await this.load();
-    const database = cfg.database || 'postgres';
-    const client = this._client(cfg, database);
-    await client.connect();
-    return { client, cfg, database, extra: new Map() };
-  },
-
-  /** 跨库需要独立连接（PG 不支持跨库查询） */
-  async _clientFor(session, database) {
-    if (!database || database === session.database) return session.client;
-    if (session.extra.has(database)) return session.extra.get(database);
-    const c = this._client(session.cfg, database);
+  /** 新建并连上一个 Client，挂好 error 监听（失效标记记在 client.__state 上） */
+  async _openClient(cfg, database) {
+    const c = this._client(cfg, database);
+    c.__state = { broken: null };
+    watchConn(c, c.__state, 'PostgreSQL');
     try {
       await c.connect();
     } catch (e) {
       try { await c.end(); } catch (x) { /* ignore */ }
+      throw e;
+    }
+    return c;
+  },
+
+  async connect(cfg) {
+    await this.load();
+    const database = cfg.database || 'postgres';
+    const client = await this._openClient(cfg, database);
+    return { client, cfg, database, extra: new Map() };
+  },
+
+  /** 跨库需要独立连接（PG 不支持跨库查询）；已失效的连接在这里重建 */
+  async _clientFor(session, database) {
+    if (!database || database === session.database) {
+      if (session.client.__state && session.client.__state.broken) {
+        try { await session.client.end(); } catch (e) { /* ignore */ }
+        session.client = await this._openClient(session.cfg, session.database);
+      }
+      return session.client;
+    }
+    const old = session.extra.get(database);
+    if (old && !(old.__state && old.__state.broken)) return old;
+    if (old) {
+      session.extra.delete(database);
+      try { await old.end(); } catch (e) { /* ignore */ }
+    }
+    let c;
+    try {
+      c = await this._openClient(session.cfg, database);
+    } catch (e) {
       throw new Error('无法连接数据库「' + database + '」：' + (e && e.message ? e.message : e));
     }
     session.extra.set(database, c);
@@ -343,7 +396,7 @@ const postgres = {
   },
 
   async databases(session) {
-    const r = await session.client.query(
+    const r = await (await this._clientFor(session, null)).query(
       'SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname');
     return r.rows.map(x => x.datname);
   },
@@ -529,6 +582,8 @@ const mssql = {
       pool: { max: 4, min: 0, idleTimeoutMillis: 30000 }
     });
     try {
+      // 连接池自身会重建断开的连接，这里只需防止未监听的 error 事件让进程崩溃
+      watchConn(pool, {}, 'SQL Server');
       await pool.connect();
     } catch (e) {
       try { await pool.close(); } catch (x) { /* ignore */ }
