@@ -1,0 +1,2 @@
+# Shell 脚本固定使用 LF 换行，避免在 Windows 检出后于 Linux/WSL/Docker 中因 CRLF 无法执行
+*.sh text eol=lf
