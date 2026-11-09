@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQLTool — 数据库工作台</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 标题栏 ============ -->
+  <div class="titlebar">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#A4373A"/>
+      <path d="M5 8v16c0 2.3 4.9 4.2 11 4.2s11-1.9 11-4.2V8" fill="#B84B4E"/>
+      <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#D96A6D"/>
+      <ellipse cx="16" cy="7" rx="7" ry="2.5" fill="#F2B7B8"/>
+    </svg>
+    <span class="t-text">SQLTool</span>
+    <span class="t-sub">— 数据库工作台（SQLite / MySQL / PostgreSQL / SQL Server）</span>
+    <span class="spacer"></span>
+    <div class="win-btns"><span title="最小化">—</span><span title="最大化">▢</span><span class="close" title="关闭">✕</span></div>
+  </div>
+
+  <!-- ============ 菜单栏 ============ -->
+  <div class="menubar">
+    <div class="m-item">文件(F)
+      <div class="dropdown">
+        <div class="d-item" data-action="new-conn">新建连接(N)...<span class="kbd">Ctrl+Alt+C</span></div>
+        <div class="d-item" data-action="open-db">打开数据库文件(O)...<span class="kbd">Ctrl+O</span></div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="import-csv">导入 CSV 数据(I)...</div>
+        <div class="d-item" data-action="run-script">执行 SQL 脚本文件(S)...</div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="save">保存到浏览器本地<span class="kbd">Ctrl+S</span></div>
+        <div class="d-item" data-action="export-db">导出数据库为 .db 文件(E)...</div>
+      </div>
+    </div>
+    <div class="m-item">编辑(E)
+      <div class="dropdown">
+        <div class="d-item" data-action="copy-sel">复制<span class="kbd">Ctrl+C</span></div>
+        <div class="d-item" data-action="paste-sel">粘贴<span class="kbd">Ctrl+V</span></div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="select-all">全选<span class="kbd">Ctrl+A</span></div>
+        <div class="d-item" data-action="complete">输入提示<span class="kbd">Ctrl+Space</span></div>
+        <div class="d-item" data-action="format">格式化 SQL</div>
+      </div>
+    </div>
+    <div class="m-item">视图(V)
+      <div class="dropdown">
+        <div class="d-item" data-action="toggle-explorer">对象资源管理器(O)<span class="kbd">F8</span></div>
+        <div class="d-item" data-action="collapse">折叠全部节点</div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="theme">切换主题：深色 / 浅色</div>
+      </div>
+    </div>
+    <div class="m-item">查询(Q)
+      <div class="dropdown">
+        <div class="d-item" data-action="execute">执行(E)<span class="kbd">F5</span></div>
+        <div class="d-item" data-action="explain">显示执行计划(P)<span class="kbd">Ctrl+F5</span></div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="cancel">取消执行(C)</div>
+        <div class="d-item" data-action="refresh">刷新对象资源管理器</div>
+      </div>
+    </div>
+    <div class="m-item">工具(T)
+      <div class="dropdown">
+        <div class="d-item" data-action="new-conn">连接管理器...</div>
+        <div class="d-item" data-action="export-db">导出数据库</div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="clear-db">清空当前数据库</div>
+      </div>
+    </div>
+    <div class="m-item">帮助(H)
+      <div class="dropdown">
+        <div class="d-item" data-action="shortcuts">键盘快捷键</div>
+        <div class="d-item" data-action="about">关于 SQLTool(A)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 工具栏 ============ -->
+  <div class="toolbar">
+    <div class="tb-btn" data-action="new-conn" title="新建连接">
+      <svg viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="5.2" ry="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.8 4v8c0 1.1 2.3 2 5.2 2s5.2-.9 5.2-2V4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M12.5 10.5h4M14.5 8.5v4" stroke="#4E9A3F" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span class="tb-label">连接</span>
+    </div>
+    <div class="tb-btn" data-action="open-db" title="打开 .db 文件">
+      <svg viewBox="0 0 16 16"><path d="M1.5 3.5h4l1.3 1.6h7.7v7.4H1.5z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="new-query" title="新建查询 (Ctrl+N)">
+      <svg viewBox="0 0 16 16"><path d="M3 1h7l3 3v11H3z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10 1v3h3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 8h6M5 10.5h6" stroke="currentColor" stroke-width="1.1"/></svg>
+    </div>
+    <div class="tb-btn exec" data-action="execute" title="执行 (F5)">
+      <svg viewBox="0 0 16 16"><path d="M3.5 2.4 13 8l-9.5 5.6z" fill="#4E9A3F" stroke="#2F742C" stroke-width="1"/></svg>
+      <span class="tb-label">执行</span>
+    </div>
+    <div class="tb-btn" data-action="explain" title="显示执行计划 (Ctrl+F5)">
+      <svg viewBox="0 0 16 16"><path d="M2 2h5l4 6v6H2z" fill="none" stroke="#4E9A3F" stroke-width="1.3"/><path d="M11 2h3v3" fill="none" stroke="#4E9A3F" stroke-width="1.3"/></svg>
+    </div>
+    <div class="tb-btn" data-action="cancel" title="取消执行">
+      <svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1" fill="#C42B1C"/></svg>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="import-csv" title="导入 CSV">
+      <svg viewBox="0 0 16 16"><path d="M8 1.5v8M5 6.5 8 9.5l3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span class="tb-label">导入</span>
+    </div>
+    <div class="tb-btn" data-action="export-db" title="导出数据库">
+      <svg viewBox="0 0 16 16"><path d="M8 9.5v-8M5 4.5 8 1.5l3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span class="tb-label">导出</span>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="refresh" title="刷新">
+      <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5V5h-2.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </div>
+    <div class="tb-btn" data-action="save" title="保存到本地 (Ctrl+S)">
+      <svg viewBox="0 0 16 16"><path d="M2 2h9l3 3v9H2z" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="5" y="2" width="5" height="4" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="4.5" y="9" width="7" height="5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn disabled" data-action="pick-db" id="btnDb" title="切换当前数据库">
+      <svg viewBox="0 0 16 16"><ellipse cx="8" cy="3.6" rx="5.5" ry="2.1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 3.6v8.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V3.6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      <span class="tb-label" id="curDb">—</span>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="theme" title="切换主题">
+      <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>
+    </div>
+    <div class="tb-btn" data-action="about" title="关于">
+      <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 7v5M8 4.6v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+  </div>
+
+  <!-- ============ 主体 ============ -->
+  <div class="main" id="main">
+    <div class="explorer" id="explorer">
+      <div class="panel-head">
+        <svg viewBox="0 0 16 16" style="width:12px;height:12px"><ellipse cx="8" cy="4" rx="5" ry="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+        对象资源管理器
+        <div class="ph-actions">
+          <div class="ph-btn" data-action="new-conn" title="新建连接">
+            <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-btn" data-action="refresh" title="刷新">
+            <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5V5h-2.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-btn" data-action="collapse" title="全部折叠">
+            <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="oe-search">
+        <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.3 10.3 14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <input id="treeFilter" type="text" placeholder="搜索表 / 视图 / 列…" spellcheck="false">
+      </div>
+      <div class="tree" id="tree"></div>
+    </div>
+
+    <div class="splitter-v" id="splitV"></div>
+
+    <div class="workspace">
+      <div class="doc-tabs" id="docTabs"></div>
+
+      <div class="editor-host" id="editorHost">
+        <div class="editor" id="editor">
+          <div class="gutter" id="gutter"></div>
+          <div class="code-scroll" id="codeScroll">
+            <div class="code-inner">
+              <pre class="hl" id="hl"></pre>
+              <textarea id="sql" spellcheck="false" wrap="soft"></textarea>
+              <div class="ac" id="ac"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress"><div class="bar" id="progBar"></div></div>
+        <div class="splitter-h" id="splitH"></div>
+
+        <div class="results" id="results">
+          <div class="res-tabs">
+            <div class="res-tab active" data-res="grid">结果 <span class="cnt" id="rowCnt">0</span></div>
+            <div class="res-tab" data-res="msg">消息</div>
+            <div class="res-tools">
+              <div class="rt-hint" id="editHint" style="display:none"></div>
+              <div class="rt-btn row-act" id="btnRowAdd" title="向当前表新增一行" style="display:none">＋ 新增行</div>
+              <div class="rt-btn row-act del" id="btnRowDel" title="删除选中的行（Ctrl / Shift 可多选）" style="display:none">－ 删除行</div>
+              <div class="rt-sep"></div>
+              <div class="rt-btn" id="btnResCsv" title="导出为 CSV">CSV</div>
+              <div class="rt-btn" id="btnResJson" title="导出为 JSON">JSON</div>
+              <div class="rt-btn" id="btnResCopy" title="复制结果">复制</div>
+            </div>
+          </div>
+          <div class="res-body" id="resBody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 状态栏 ============ -->
+  <div class="statusbar">
+    <div class="sb"><span class="dot off" id="sbDot"></span><span id="sbConn">未连接</span></div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbEngine">—</div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbObjects"></div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbPersist"></div>
+    <div class="spacer"></div>
+    <div class="sb" id="sbStatus">就绪</div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbPos">行 1, 列 1</div>
+    <div class="sb-sep"></div>
+    <div class="sb">SQLite (WASM) · MySQL · PostgreSQL · SQL Server</div>
+  </div>
+</div>
+
+<div class="ctx" id="ctx"></div>
+
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="ov-t" id="ovT">处理中…</div>
+  <div class="ov-s" id="ovS"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/engine.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

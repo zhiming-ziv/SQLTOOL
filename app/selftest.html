@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>SQLTool 引擎自检</title>
+<style>
+  body{background:#1e1e1e;color:#dcdcdc;font-family:Consolas,monospace;font-size:13px;padding:16px;line-height:1.7}
+  .ok{color:#4EC9B0}.bad{color:#F48771}.hdr{color:#569CD6;font-weight:bold}
+  .dim{color:#888}
+</style>
+</head>
+<body>
+<pre id="out">running...</pre>
+<script src="js/engine.js"></script>
+<script>
+(function () {
+  const out = document.getElementById('out');
+  const lines = [];
+  let pass = 0, fail = 0;
+  function log(html) { lines.push(html); out.innerHTML = lines.join('\n'); }
+  function ok(name, extra) { pass++; log('<span class="ok">  PASS</span> ' + name + (extra ? ' <span class="dim">' + extra + '</span>' : '')); }
+  function bad(name, err) { fail++; log('<span class="bad">  FAIL</span> ' + name + ' <span class="dim">' + String(err && err.message || err) + '</span>'); }
+  function group(t) { log('\n<span class="hdr">== ' + t + ' ==</span>'); }
+
+  function withTimeout(p, ms, label) {
+    return Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('超时 ' + ms + 'ms @ ' + label)), ms))
+    ]);
+  }
+
+  async function test(name, fn) {
+    try { const r = await withTimeout(Promise.resolve().then(fn), 20000, name); ok(name, r); }
+    catch (e) { bad(name, e); }
+  }
+  function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
+
+  async function main() {
+    log('<span class="hdr">SQLTool 引擎自检 ' + new Date().toISOString() + '</span>');
+
+    /* ---------- 1. 引擎加载 ---------- */
+    group('引擎加载');
+    await test('sql.js 脚本加载', async () => {
+      await SqlTool.engines.sqlite.ensureLib();
+      assert(window.initSqlJs, 'initSqlJs 未定义');
+      return 'initSqlJs 就绪';
+    });
+
+    const e = SqlTool.create('sqlite');
+    await test('打开内存数据库', async () => {
+      await e.open({ name: 'test' });
+      assert(e.db, 'db 为空');
+      return 'SQLite 内存实例已创建';
+    });
+
+    await test('读取引擎版本', async () => {
+      const r = e.exec('SELECT sqlite_version() AS v;');
+      const v = r.sets[0].values[0][0];
+      assert(/^\d+\.\d+/.test(v), '版本号异常: ' + v);
+      return 'SQLite ' + v;
+    });
+
+    /* ---------- 2. DDL ---------- */
+    group('DDL / DML');
+    await test('CREATE TABLE', async () => {
+      e.exec(`CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE,
+        balance REAL DEFAULT 0,
+        active INTEGER DEFAULT 1
+      );`);
+      const s = e.schema();
+      assert(s.tables.length === 1, '表数量应为 1，实际 ' + s.tables.length);
+      assert(s.tables[0].columns.length === 5, '列数量应为 5，实际 ' + s.tables[0].columns.length);
+      return 'users 表已创建，5 列';
+    });
+
+    await test('CREATE INDEX / VIEW', async () => {
+      e.exec('CREATE INDEX idx_users_name ON users(name);');
+      e.exec('CREATE VIEW v_active AS SELECT id, name FROM users WHERE active = 1;');
+      const s = e.schema();
+      assert(s.indexes.length === 1, '索引数量异常');
+      assert(s.views.length === 1, '视图数量异常');
+      return s.indexes.length + ' 索引 / ' + s.views.length + ' 视图';
+    });
+
+    await test('INSERT 多行 + 受影响行数', async () => {
+      const r = e.exec(`INSERT INTO users (name, email, balance) VALUES
+        ('张三','zhang@example.com',1500.50),
+        ('李四','li@example.com',320.00),
+        ('王五','wang@example.com',9999.99);`);
+      assert(r.rowsAffected === 3, '受影响行数应为 3，实际 ' + r.rowsAffected);
+      return r.rowsAffected + ' 行受影响';
+    });
+
+    await test('SELECT 返回正确列与值', async () => {
+      const r = e.exec('SELECT id, name, balance FROM users ORDER BY id;');
+      const set = r.sets[0];
+      assert(set.columns.join(',') === 'id,name,balance', '列名不符: ' + set.columns.join(','));
+      assert(set.values.length === 3, '行数应为 3');
+      assert(set.values[0][1] === '张三', '首行姓名不符: ' + set.values[0][1]);
+      assert(Math.abs(set.values[0][2] - 1500.5) < 0.001, '金额不符');
+      return '3 行 / 列名与数据校验通过';
+    });
+
+    await test('聚合查询', async () => {
+      const r = e.exec('SELECT COUNT(*) AS c, SUM(balance) AS s, ROUND(AVG(balance),2) AS a FROM users;');
+      const v = r.sets[0].values[0];
+      assert(v[0] === 3, 'COUNT 应为 3');
+      assert(Math.abs(v[1] - 11820.49) < 0.01, 'SUM 应为 11820.49，实际 ' + v[1]);
+      return 'COUNT=' + v[0] + ' SUM=' + v[1] + ' AVG=' + v[2];
+    });
+
+    await test('JOIN 查询', async () => {
+      e.exec('CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL);');
+      e.exec('INSERT INTO orders (user_id, amount) VALUES (1, 100), (1, 250), (2, 80);');
+      const r = e.exec(`SELECT u.name, COUNT(o.id) AS cnt, SUM(o.amount) AS total
+        FROM users u JOIN orders o ON o.user_id = u.id GROUP BY u.name ORDER BY total DESC;`);
+      const set = r.sets[0];
+      assert(set.values.length === 2, '应返回 2 个用户');
+      assert(set.values[0][0] === '张三' && set.values[0][2] === 350, '聚合结果不符: ' + JSON.stringify(set.values[0]));
+      return '张三 350.0 / 李四 80.0';
+    });
+
+    /* ---------- 3. 参数化写入 ---------- */
+    group('参数化与编辑');
+    await test('参数化 UPDATE', async () => {
+      const before = e.exec('SELECT balance FROM users WHERE id = 1;').sets[0].values[0][0];
+      e.run('UPDATE users SET balance = ? WHERE id = ?;', [8888.88, 1]);
+      const after = e.exec('SELECT balance FROM users WHERE id = 1;').sets[0].values[0][0];
+      assert(Math.abs(after - 8888.88) < 0.001, '更新后数值不符: ' + after);
+      return before + ' → ' + after;
+    });
+
+    await test('参数化 NULL 写入', async () => {
+      e.run('UPDATE users SET email = ? WHERE id = ?;', [null, 3]);
+      const v = e.exec('SELECT email FROM users WHERE id = 3;').sets[0].values[0][0];
+      assert(v === null, '应为 NULL，实际 ' + v);
+      return 'NULL 写入正确';
+    });
+
+    await test('rowid 可用于定位行', async () => {
+      const r = e.exec('SELECT rowid FROM users ORDER BY rowid;');
+      assert(r.sets[0].values.length === 3, 'rowid 行数异常');
+      assert(r.sets[0].values[0][0] === 1, 'rowid 起始应为 1');
+      return 'rowid 1..' + r.sets[0].values[2][0];
+    });
+
+    /* ---------- 4. 约束与事务 ---------- */
+    group('约束与事务');
+    await test('UNIQUE 约束生效', async () => {
+      let threw = false;
+      try { e.exec("INSERT INTO users (name, email) VALUES ('重复','zhang@example.com');"); }
+      catch (err) { threw = /UNIQUE/i.test(err.message); }
+      assert(threw, 'UNIQUE 约束未生效');
+      return '重复 email 被拒绝';
+    });
+
+    await test('NOT NULL 约束生效', async () => {
+      let threw = false;
+      try { e.exec("INSERT INTO users (name) VALUES (NULL);"); }
+      catch (err) { threw = /NOT NULL/i.test(err.message); }
+      assert(threw, 'NOT NULL 约束未生效');
+      return 'NULL name 被拒绝';
+    });
+
+    await test('非法 SQL 抛出可读错误', async () => {
+      let msg = '';
+      try { e.exec('SELEC * FROM users;'); } catch (err) { msg = err.message; }
+      assert(/syntax error/i.test(msg), '未抛出语法错误，实际: ' + msg);
+      return msg.split('\n')[0].slice(0, 60);
+    });
+
+    await test('事务回滚', async () => {
+      const before = e.exec('SELECT COUNT(*) FROM users;').sets[0].values[0][0];
+      try {
+        e.exec('BEGIN; INSERT INTO users (name) VALUES (\'临时\'); SELECT * FROM no_such_table; COMMIT;');
+      } catch (err) { /* 预期失败 */ }
+      try { e.exec('ROLLBACK;'); } catch (err) { /* 可能已回滚 */ }
+      const after = e.exec('SELECT COUNT(*) FROM users;').sets[0].values[0][0];
+      assert(after === before, '回滚后行数应不变: ' + before + ' → ' + after);
+      return '回滚后行数保持 ' + after;
+    });
+
+    /* ---------- 5. 多语句与执行计划 ---------- */
+    group('多语句 / 执行计划');
+    await test('单次执行多条语句', async () => {
+      const r = e.exec("CREATE TABLE t2 (a INT); INSERT INTO t2 VALUES (1),(2),(3); SELECT COUNT(*) FROM t2;");
+      assert(r.sets.length >= 1, '应至少返回 1 个结果集');
+      return '返回 ' + r.sets.length + ' 个结果集';
+    });
+
+    await test('EXPLAIN QUERY PLAN', async () => {
+      const r = e.exec('EXPLAIN QUERY PLAN SELECT * FROM users WHERE name = \'张三\';');
+      assert(r.sets.length === 1, '执行计划应返回结果集');
+      assert(r.sets[0].values.length > 0, '执行计划为空');
+      return r.sets[0].values.length + ' 条计划步骤';
+    });
+
+    /* ---------- 6. schema 完整性 ---------- */
+    group('Schema 读取');
+    await test('列类型 / 主键 / 非空 标记正确', async () => {
+      const s = e.schema();
+      const u = s.tables.find(t => t.name === 'users');
+      assert(u, '未找到 users 表');
+      const id = u.columns.find(c => c.name === 'id');
+      const nm = u.columns.find(c => c.name === 'name');
+      assert(id.pk === true, 'id 应为主键');
+      assert(id.type === 'INTEGER', 'id 类型应为 INTEGER，实际 ' + id.type);
+      assert(nm.notnull === true, 'name 应为 NOT NULL');
+      assert(nm.dflt === null, 'name 不应有默认值');
+      return 'id=INTEGER PK / name=TEXT NOT NULL';
+    });
+
+    await test('行数统计正确', async () => {
+      const s = e.schema();
+      const u = s.tables.find(t => t.name === 'users');
+      assert(u.rowCount === 3, 'users 行数应为 3，实际 ' + u.rowCount);
+      return 'users ' + u.rowCount + ' 行';
+    });
+
+    await test('DDL 原文可读', async () => {
+      const s = e.schema();
+      const u = s.tables.find(t => t.name === 'users');
+      assert(/CREATE TABLE/i.test(u.ddl), 'DDL 原文缺失');
+      return u.ddl.split('\n')[0].slice(0, 50);
+    });
+
+    /* ---------- 7. 导出 / 导入 ---------- */
+    group('导出与持久化');
+    let exported = null;
+    await test('导出二进制并校验魔数', async () => {
+      exported = e.exportBinary();
+      assert(exported instanceof Uint8Array, '导出应为 Uint8Array');
+      assert(exported.length > 0, '导出为空');
+      const magic = String.fromCharCode.apply(null, exported.slice(0, 15));
+      assert(magic === 'SQLite format 3', '魔数不符: ' + JSON.stringify(magic));
+      return exported.length + ' 字节，魔数正确';
+    });
+
+    await test('从导出字节重新打开，数据完整', async () => {
+      const e2 = SqlTool.create('sqlite');
+      await e2.open({ data: exported, name: 'restored' });
+      const r = e2.exec('SELECT COUNT(*) FROM users;');
+      assert(r.sets[0].values[0][0] === 3, '恢复后行数不符');
+      const s = e2.schema();
+      assert(s.tables.length >= 3, '恢复后表数量不符: ' + s.tables.length);
+      e2.close();
+      return '3 行 / ' + s.tables.length + ' 张表 完整恢复';
+    });
+
+    await test('IndexedDB 存取删往返', async () => {
+      const key = 'selftest_' + Date.now();
+      await SqlTool.Store.putFile(key, exported);
+      const got = await SqlTool.Store.getFile(key);
+      assert(got, '读取失败');
+      const arr = new Uint8Array(got);
+      assert(arr.length === exported.length, '长度不符 ' + arr.length + ' vs ' + exported.length);
+      assert(String.fromCharCode.apply(null, arr.slice(0, 15)) === 'SQLite format 3', '魔数不符');
+      await SqlTool.Store.putMeta(key, { id: key, name: 'x', engine: 'sqlite' });
+      const meta = await SqlTool.Store.getMeta(key);
+      assert(meta && meta.name === 'x', 'meta 读取失败');
+      await SqlTool.Store.delFile(key);
+      await SqlTool.Store.delMeta(key);
+      const after = await SqlTool.Store.getFile(key);
+      assert(after === undefined, '删除后仍能读到');
+      return exported.length + ' 字节往返一致，删除生效';
+    });
+
+    await test('ATTACH 跨库查询', async () => {
+      const e3 = SqlTool.create('sqlite');
+      await e3.open({ name: 'attach' });
+      const other = SqlTool.create('sqlite');
+      await other.open({ name: 'other' });
+      other.exec('CREATE TABLE dim (k TEXT, v TEXT); INSERT INTO dim VALUES (\'a\',\'甲\'),(\'b\',\'乙\');');
+      const bytes = other.exportBinary();
+      other.close();
+      // 写入临时文件后 ATTACH（sql.js 支持通过虚拟文件系统）
+      e3.db.run("ATTACH DATABASE ':memory:' AS ext;");
+      e3.exec('CREATE TABLE ext.dim (k TEXT, v TEXT);');
+      e3.exec("INSERT INTO ext.dim VALUES ('a','甲'),('b','乙');");
+      e3.exec('CREATE TABLE fact (k TEXT, n INT);');
+      e3.exec("INSERT INTO fact VALUES ('a',10),('b',20),('a',5);");
+      const r = e3.exec('SELECT d.v, SUM(f.n) AS s FROM fact f JOIN ext.dim d ON d.k = f.k GROUP BY d.v ORDER BY s ASC;');
+      assert(r.sets[0].values.length === 2, '跨库结果行数异常');
+      assert(r.sets[0].values[0][0] === '甲' && r.sets[0].values[0][1] === 15, '跨库聚合不符: ' + JSON.stringify(r.sets[0].values));
+      assert(r.sets[0].values[1][0] === '乙' && r.sets[0].values[1][1] === 20, '跨库聚合不符: ' + JSON.stringify(r.sets[0].values));
+      const attached = e3.attached();
+      assert(attached.length === 2, 'ATTACH 数量应为 2，实际 ' + attached.length);
+      e3.close();
+      return '跨库 JOIN 聚合正确，已挂载 ' + attached.length + ' 个库';
+    });
+
+    /* ---------- 8. 大数据量 ---------- */
+    group('性能与容量');
+    await test('批量插入 5000 行并聚合', async () => {
+      const e4 = SqlTool.create('sqlite');
+      await e4.open({ name: 'bulk' });
+      e4.exec('CREATE TABLE big (id INTEGER PRIMARY KEY, grp TEXT, val REAL);');
+      const t0 = performance.now();
+      e4.db.run('BEGIN');
+      const st = e4.db.prepare('INSERT INTO big (grp, val) VALUES (?, ?)');
+      for (let i = 0; i < 5000; i++) {
+        st.bind(['g' + (i % 7), (i * 13) % 997 / 7]);
+        st.step();
+        st.reset();
+      }
+      st.free();
+      e4.db.run('COMMIT');
+      const tInsert = Math.round(performance.now() - t0);
+      const t1 = performance.now();
+      const r = e4.exec('SELECT grp, COUNT(*) c, ROUND(SUM(val),2) s FROM big GROUP BY grp ORDER BY c DESC;');
+      const tQuery = Math.round(performance.now() - t1);
+      assert(r.sets[0].values.length === 7, '分组数应为 7，实际 ' + r.sets[0].values.length);
+      const total = r.sets[0].values.reduce((a, b) => a + b[1], 0);
+      assert(total === 5000, '总行数应为 5000，实际 ' + total);
+      e4.close();
+      return '插入 5000 行 ' + tInsert + 'ms，聚合查询 ' + tQuery + 'ms';
+    });
+
+    e.close();
+
+    /* ---------- 汇总 ---------- */
+    log('\n<span class="hdr">===== 自检完成 =====</span>');
+    log('<span class="' + (fail === 0 ? 'ok' : 'bad') + '">通过 ' + pass + ' 项，失败 ' + fail + ' 项</span>');
+    document.title = 'SELFTEST pass=' + pass + ' fail=' + fail;
+    window.__selftest = { pass, fail };
+  }
+
+  main().catch(err => {
+    log('<span class="bad">自检异常终止: ' + (err && err.stack || err) + '</span>');
+    document.title = 'SELFTEST ERROR';
+  });
+})();
+</script>
+</body>
+</html>

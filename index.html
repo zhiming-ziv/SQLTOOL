@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQLTool — 浏览器内数据库工作台</title>
+<style>
+  :root{
+    --bg:#1E1E1E; --panel:#252526; --panel2:#2D2D30; --border:#3F3F46;
+    --fg:#DCDCDC; --dim:#8A8A8A; --accent:#007ACC; --green:#4E9A3F; --amber:#D7A33D;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;min-height:100vh;background:var(--bg);color:var(--fg);
+    font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:40px 20px;
+  }
+  .wrap{max-width:940px;width:100%;}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:8px;}
+  header svg{width:46px;height:46px;flex:0 0 46px;}
+  h1{margin:0;font-size:26px;font-weight:600;letter-spacing:.3px;}
+  .sub{color:var(--dim);font-size:13.5px;margin:4px 0 0;line-height:1.7;}
+  .badges{display:flex;gap:8px;margin:22px 0 30px;flex-wrap:wrap;}
+  .badge{font-size:11.5px;padding:3px 11px;border:1px solid var(--border);border-radius:20px;color:var(--dim);}
+  .badge b{color:var(--fg);font-weight:600;}
+  .cards{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;}
+  @media(max-width:760px){.cards{grid-template-columns:1fr;}}
+  a.card{
+    display:block;text-decoration:none;color:inherit;background:var(--panel);
+    border:1px solid var(--border);border-radius:6px;padding:22px 24px;transition:.16s;
+    position:relative;overflow:hidden;
+  }
+  a.card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.5);}
+  a.card.primary::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);}
+  .card h2{margin:0 0 8px;font-size:16.5px;font-weight:600;display:flex;align-items:center;gap:9px;}
+  .card p{margin:0;color:var(--dim);font-size:12.8px;line-height:1.85;}
+  .card ul{margin:12px 0 0;padding-left:18px;color:var(--dim);font-size:12.5px;line-height:2;}
+  .card ul b{color:var(--fg);font-weight:600;}
+  .tag{font-size:10.5px;padding:2px 8px;border-radius:3px;background:rgba(78,154,63,.18);color:#7DD16B;border:1px solid rgba(78,154,63,.35);}
+  .tag.alt{background:rgba(215,163,61,.15);color:var(--amber);border-color:rgba(215,163,61,.35);}
+  .note{
+    margin-top:26px;background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--amber);
+    border-radius:4px;padding:15px 18px;font-size:12.5px;line-height:1.9;color:var(--dim);
+  }
+  .note b{color:var(--fg);}
+  code{font-family:"Cascadia Mono",Consolas,monospace;background:rgba(255,255,255,.07);
+    padding:1.5px 6px;border-radius:3px;font-size:12px;color:#9CDCFE;}
+  footer{margin-top:28px;color:var(--dim);font-size:11.5px;text-align:center;line-height:1.9;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg viewBox="0 0 32 32">
+      <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#A4373A"/>
+      <path d="M5 8v16c0 2.3 4.9 4.2 11 4.2s11-1.9 11-4.2V8" fill="#B84B4E"/>
+      <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#D96A6D"/>
+      <ellipse cx="16" cy="7" rx="7" ry="2.5" fill="#F2B7B8"/>
+    </svg>
+    <div>
+      <h1>SQLTool</h1>
+      <p class="sub">浏览器内运行的数据库工作台 · 界面参照 SQL Server Management Studio</p>
+    </div>
+  </header>
+
+  <div class="badges">
+    <span class="badge">SQLite <b>3.45.2</b> (浏览器内 WebAssembly)</span>
+    <span class="badge">MySQL / PostgreSQL / SQL Server</span>
+    <span class="badge">本地代理 · 仅监听 <b>127.0.0.1</b></span>
+    <span class="badge">离线可用（浏览器内引擎）</span>
+  </div>
+
+  <div class="cards">
+    <a class="card primary" href="app/index.html">
+      <h2>打开数据库工作台 <span class="tag">真实可用</span></h2>
+      <p>浏览器内跑一个真正的 SQLite 引擎；也可以经本地代理连接 MySQL / PostgreSQL / SQL Server。</p>
+      <ul>
+        <li>执行任意 <b>DDL / DML</b>：建表、索引、视图、触发器、外键</li>
+        <li>支持 <b>MySQL / PostgreSQL / SQL Server</b> 与服务器端 SQLite 文件</li>
+        <li>左侧对象树读取<b>真实 schema</b>，双击表名直接看数据</li>
+        <li>双击单元格<b>直接改库</b>，支持 NULL、类型、约束校验</li>
+        <li>导入 <b>.db / .sql / CSV</b>，导出 <b>.db / CSV / JSON</b></li>
+        <li>数据持久化到浏览器，刷新不丢；随时导出成 .db 文件</li>
+        <li>显示 <b>EXPLAIN QUERY PLAN</b> 真实执行计划</li>
+      </ul>
+    </a>
+
+    <a class="card" href="demo/index.html">
+      <h2>查看界面演示 <span class="tag alt">纯静态</span></h2>
+      <p>最初的 SSMS 界面还原稿，使用模拟数据，用于对照视觉细节。</p>
+      <ul>
+        <li>完整的菜单栏 / 工具栏 / 状态栏</li>
+        <li>对象资源管理器与查询窗口布局</li>
+        <li>深色与 SSMS 经典浅色两套主题</li>
+      </ul>
+    </a>
+  </div>
+
+  <div class="note">
+    <b>必须通过本地服务器访问，不能直接双击打开 HTML 文件。</b><br>
+    浏览器要求 WebAssembly 与 IndexedDB 运行在 <code>http://</code> 协议下，<code>file://</code> 会被安全策略拦截。<br><br>
+    启动方式：<br>
+    · <code>npm install</code>（连接 MySQL / PostgreSQL / SQL Server 前必须执行一次）<br>
+    · <code>node server.js</code>（Windows 也可双击 <code>start.bat</code>）<br><br>
+    启动后访问 <code>http://127.0.0.1:8777/app/index.html</code><br><br>
+    <b>关于远程数据库：</b>浏览器无法打开原始 TCP 连接，因此 MySQL / PostgreSQL / SQL Server
+    由 <code>server.js</code> 这个<b>只监听 127.0.0.1 的本地代理</b>代为连接。
+    代理进程的数据库密码不会回传到网页。
+  </div>
+
+  <footer>
+    浏览器内 SQLite 的数据保存在本机 IndexedDB，不上传任何服务器；<br>
+    远程数据库的连接由本地代理进程转发，服务不对局域网暴露。<br>
+    可随时通过「文件 → 导出数据库」把浏览器内的数据带走。
+  </footer>
+</div>
+</body>
+</html>

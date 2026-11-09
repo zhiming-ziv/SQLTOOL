@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Server Management Studio</title>
+<style>
+/* ============================================================
+   主题变量 —— SSMS 经典浅色 / 深色
+   ============================================================ */
+:root{
+  --font-ui: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "Courier New", monospace;
+}
+html[data-theme="dark"]{
+  --title-bg:#1F1F1F;      --title-fg:#CCCCCC;
+  --menu-bg:#2D2D30;       --menu-fg:#D4D4D4;   --menu-hover:#3E3E42;
+  --toolbar-bg:#333337;    --toolbar-fg:#D4D4D4; --toolbar-hover:#464649; --toolbar-active:#094771;
+  --panel-bg:#252526;      --panel-fg:#D4D4D4;   --panel-head:#2D2D30;
+  --editor-bg:#1E1E1E;     --editor-fg:#DCDCDC;  --gutter-bg:#1E1E1E; --gutter-fg:#858585;
+  --border:#3F3F46;        --border-soft:#333337;
+  --sel:#094771;           --sel-fg:#FFFFFF;
+  --hover:#2A2D2E;
+  --grid-bg:#1E1E1E;       --grid-head:#2D2D30;  --grid-head-fg:#CCCCCC;
+  --grid-line:#3F3F46;     --grid-row-alt:#232323;
+  --accent:#007ACC;        --accent-fg:#FFFFFF;
+  --green:#4E9A3F;         --green-hover:#5CAE4B;
+  --red:#C42B1C;
+  --status-bg:#007ACC;     --status-fg:#FFFFFF;
+  --scroll:#4A4A4F;        --scroll-hover:#5A5A60;
+  --kw:#569CD6; --str:#CE9178; --num:#B5CEA8; --cmt:#6A9955; --fn:#DCDCAA; --punc:#D4D4D4; --var:#9CDCFE;
+  --shadow: 0 6px 22px rgba(0,0,0,.55);
+}
+html[data-theme="light"]{
+  --title-bg:#E9EEF4;      --title-fg:#1B1B1B;
+  --menu-bg:#F0F0F0;       --menu-fg:#1B1B1B;   --menu-hover:#DCE6F1;
+  --toolbar-bg:#EFEFEF;    --toolbar-fg:#1B1B1B; --toolbar-hover:#DCE6F1; --toolbar-active:#CCE8FF;
+  --panel-bg:#FFFFFF;      --panel-fg:#1B1B1B;   --panel-head:#F0F0F0;
+  --editor-bg:#FFFFFF;     --editor-fg:#1B1B1B;  --gutter-bg:#F5F5F5; --gutter-fg:#6E6E6E;
+  --border:#B9B9B9;        --border-soft:#DCDCDC;
+  --sel:#CCE8FF;           --sel-fg:#000000;
+  --hover:#E8F1FA;
+  --grid-bg:#FFFFFF;       --grid-head:#EFEFEF;  --grid-head-fg:#1B1B1B;
+  --grid-line:#C9C9C9;     --grid-row-alt:#F7F9FB;
+  --accent:#0078D4;        --accent-fg:#FFFFFF;
+  --green:#388A34;         --green-hover:#2F742C;
+  --red:#C42B1C;
+  --status-bg:#0078D4;     --status-fg:#FFFFFF;
+  --scroll:#C4C4C4;        --scroll-hover:#A9A9A9;
+  --kw:#0000FF; --str:#A31515; --num:#098658; --cmt:#008000; --fn:#795E26; --punc:#1B1B1B; --var:#001080;
+  --shadow: 0 6px 22px rgba(0,0,0,.22);
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  font-family:var(--font-ui);
+  font-size:12px;
+  background:var(--panel-bg);
+  color:var(--panel-fg);
+  -webkit-font-smoothing:antialiased;
+  user-select:none;
+}
+::-webkit-scrollbar{width:12px;height:12px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--scroll);border:3px solid transparent;background-clip:content-box;border-radius:8px;}
+::-webkit-scrollbar-thumb:hover{background:var(--scroll-hover);background-clip:content-box;}
+::-webkit-scrollbar-corner{background:transparent;}
+
+/* ============================================================
+   整体框架
+   ============================================================ */
+.app{height:100%;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ---- 标题栏 ---- */
+.titlebar{
+  height:30px;flex:0 0 30px;display:flex;align-items:center;gap:8px;
+  background:var(--title-bg);color:var(--title-fg);
+  padding:0 8px;font-size:12px;
+  border-bottom:1px solid var(--border);
+}
+.titlebar .logo{width:16px;height:16px;flex:0 0 16px;}
+.titlebar .t-text{font-weight:600;letter-spacing:.2px;}
+.titlebar .t-sub{opacity:.6;}
+.titlebar .spacer{flex:1;}
+.win-btns{display:flex;gap:0;margin-right:-8px;}
+.win-btns span{
+  width:44px;height:30px;display:flex;align-items:center;justify-content:center;
+  cursor:default;font-size:13px;color:var(--title-fg);
+}
+.win-btns span:hover{background:rgba(128,128,128,.28);}
+.win-btns span.close:hover{background:#E81123;color:#fff;}
+
+/* ---- 菜单栏 ---- */
+.menubar{
+  height:26px;flex:0 0 26px;display:flex;align-items:center;
+  background:var(--menu-bg);color:var(--menu-fg);
+  padding:0 4px;border-bottom:1px solid var(--border-soft);
+}
+.menubar .m-item{
+  padding:3px 9px;border-radius:2px;cursor:default;position:relative;white-space:nowrap;
+}
+.menubar .m-item:hover,.menubar .m-item.open{background:var(--menu-hover);}
+.dropdown{
+  position:absolute;top:100%;left:0;min-width:220px;z-index:900;
+  background:var(--menu-bg);border:1px solid var(--border);
+  box-shadow:var(--shadow);padding:4px 0;display:none;
+}
+.m-item.open .dropdown{display:block;}
+.dropdown .d-item{
+  display:flex;align-items:center;gap:10px;padding:5px 14px 5px 30px;
+  position:relative;white-space:nowrap;
+}
+.dropdown .d-item:hover{background:var(--sel);color:var(--sel-fg);}
+.dropdown .d-item .kbd{margin-left:auto;opacity:.65;padding-left:26px;font-size:11px;}
+.dropdown .d-sep{height:1px;background:var(--border);margin:4px 0;}
+.dropdown .d-item .chk{position:absolute;left:10px;}
+
+/* ---- 工具栏 ---- */
+.toolbar{
+  height:30px;flex:0 0 30px;display:flex;align-items:center;gap:1px;
+  background:var(--toolbar-bg);color:var(--toolbar-fg);
+  padding:0 5px;border-bottom:1px solid var(--border);overflow:hidden;
+}
+.tb-btn{
+  height:24px;min-width:24px;padding:0 6px;display:flex;align-items:center;gap:5px;
+  border-radius:2px;cursor:default;white-space:nowrap;
+}
+.tb-btn:hover{background:var(--toolbar-hover);}
+.tb-btn.active{background:var(--toolbar-active);}
+.tb-btn.disabled{opacity:.4;}
+.tb-btn svg{width:16px;height:16px;flex:0 0 16px;}
+.tb-sep{width:1px;height:18px;background:var(--border);margin:0 4px;}
+.tb-btn.exec svg{fill:var(--green);}
+.tb-btn.exec:hover svg{fill:var(--green-hover);}
+.tb-btn.exec svg *{fill:var(--green);}
+.tb-btn.exec:hover svg *{fill:var(--green-hover);}
+.tb-label{font-size:11px;opacity:.85;margin-left:2px;}
+
+/* ============================================================
+   主体
+   ============================================================ */
+.main{flex:1;display:flex;min-height:0;overflow:hidden;}
+
+/* ---- 对象资源管理器 ---- */
+.explorer{
+  width:300px;flex:0 0 300px;min-width:180px;max-width:640px;
+  display:flex;flex-direction:column;background:var(--panel-bg);
+  border-right:1px solid var(--border);overflow:hidden;
+}
+.panel-head{
+  height:24px;flex:0 0 24px;display:flex;align-items:center;gap:6px;
+  background:var(--panel-head);color:var(--panel-fg);
+  padding:0 8px;font-weight:600;font-size:11px;
+  border-bottom:1px solid var(--border);text-transform:none;
+}
+.panel-head .ph-actions{margin-left:auto;display:flex;gap:2px;}
+.panel-head .ph-btn{
+  width:20px;height:18px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;cursor:default;opacity:.8;
+}
+.panel-head .ph-btn:hover{background:var(--toolbar-hover);opacity:1;}
+.panel-head .ph-btn svg{width:13px;height:13px;}
+
+.oe-search{
+  padding:5px 8px;border-bottom:1px solid var(--border-soft);
+  display:flex;align-items:center;gap:6px;background:var(--panel-bg);
+}
+.oe-search .si{width:13px;height:13px;opacity:.6;flex:0 0 13px;}
+.oe-search input{
+  flex:1;height:22px;background:var(--editor-bg);color:var(--panel-fg);
+  border:1px solid var(--border);border-radius:2px;padding:0 6px;
+  font-family:var(--font-ui);font-size:11.5px;outline:none;user-select:text;
+}
+.oe-search input:focus{border-color:var(--accent);}
+
+.tree{flex:1;overflow:auto;padding:4px 0 14px 0;}
+.node{display:flex;align-items:center;gap:5px;height:22px;padding-right:8px;cursor:default;white-space:nowrap;position:relative;}
+.node:hover{background:var(--hover);}
+.node.selected{background:var(--sel);color:var(--sel-fg);}
+.node .caret{
+  width:14px;height:14px;flex:0 0 14px;display:flex;align-items:center;justify-content:center;
+  opacity:.75;font-size:9px;transition:transform .12s ease;
+}
+.node .caret.leaf{visibility:hidden;}
+.node .caret.open{transform:rotate(90deg);}
+.node .ico{width:15px;height:15px;flex:0 0 15px;}
+.node .label{overflow:hidden;text-overflow:ellipsis;font-size:12px;}
+.node .badge{
+  margin-left:6px;font-size:10px;opacity:.55;
+  border:1px solid var(--border);border-radius:8px;padding:0 6px;line-height:14px;
+}
+.node.selected .badge{border-color:rgba(255,255,255,.4);opacity:.8;}
+.children{margin:0;padding:0;list-style:none;}
+.children.collapsed{display:none;}
+.node.filtered-out{display:none;}
+
+/* ---- 分隔条 ---- */
+.splitter-v{width:4px;flex:0 0 4px;cursor:col-resize;background:transparent;position:relative;z-index:20;}
+.splitter-v::after{content:"";position:absolute;left:1px;top:0;bottom:0;width:2px;background:transparent;transition:background .12s;}
+.splitter-v:hover::after{background:var(--accent);}
+.splitter-h{height:4px;flex:0 0 4px;cursor:row-resize;background:transparent;position:relative;z-index:20;}
+.splitter-h::after{content:"";position:absolute;top:1px;left:0;right:0;height:2px;background:transparent;transition:background .12s;}
+.splitter-h:hover::after{background:var(--accent);}
+body.resizing-v,body.resizing-v *{cursor:col-resize !important;}
+body.resizing-h,body.resizing-h *{cursor:row-resize !important;}
+
+/* ---- 工作区 ---- */
+.workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--editor-bg);}
+
+.doc-tabs{
+  height:27px;flex:0 0 27px;display:flex;align-items:stretch;
+  background:var(--panel-head);border-bottom:1px solid var(--border);overflow-x:auto;overflow-y:hidden;
+}
+.doc-tabs::-webkit-scrollbar{height:0;}
+.doc-tab{
+  display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;
+  border-right:1px solid var(--border);cursor:default;white-space:nowrap;
+  color:var(--panel-fg);opacity:.72;font-size:11.5px;position:relative;min-width:0;
+}
+.doc-tab:hover{background:var(--hover);opacity:1;}
+.doc-tab.active{background:var(--editor-bg);opacity:1;color:var(--editor-fg);}
+.doc-tab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--editor-bg);}
+.doc-tab .t-ico{width:13px;height:13px;flex:0 0 13px;}
+.doc-tab .t-name{max-width:190px;overflow:hidden;text-overflow:ellipsis;}
+.doc-tab .t-close{
+  width:15px;height:15px;border-radius:2px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;line-height:1;opacity:.6;flex:0 0 15px;
+}
+.doc-tab .t-close:hover{background:rgba(128,128,128,.45);opacity:1;}
+.doc-tab .dirty{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 7px;}
+
+/* ---- 查询编辑器 ---- */
+.editor-host{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.editor{
+  flex:1;display:flex;min-height:0;background:var(--editor-bg);
+  border-bottom:1px solid var(--border);overflow:hidden;
+}
+.gutter{
+  flex:0 0 auto;width:52px;background:var(--gutter-bg);color:var(--gutter-fg);
+  font-family:var(--font-mono);font-size:12.5px;line-height:19px;
+  padding:8px 8px 8px 0;text-align:right;overflow:hidden;
+  border-right:1px solid var(--border-soft);user-select:none;
+}
+.gutter .ln{height:19px;white-space:pre;}
+.gutter .ln.cur{color:var(--editor-fg);}
+.code-scroll{flex:1;overflow:auto;position:relative;background:var(--editor-bg);}
+.code-inner{position:relative;min-height:100%;min-width:100%;}
+.code-inner pre.hl,.code-inner textarea{
+  font-family:var(--font-mono);font-size:12.5px;line-height:19px;
+  padding:8px 14px 40px 10px;margin:0;border:0;
+  white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;
+  tab-size:4;
+}
+.code-inner pre.hl{
+  position:absolute;top:0;left:0;right:0;pointer-events:none;
+  color:var(--editor-fg);background:transparent;min-height:100%;
+}
+.code-inner textarea{
+  position:relative;display:block;width:100%;background:transparent;
+  color:transparent;caret-color:var(--editor-fg);
+  resize:none;overflow:hidden;outline:none;user-select:text;
+}
+.code-inner textarea::selection{background:var(--sel);color:var(--sel-fg);}
+.code-inner pre.hl::selection{background:transparent;}
+.tok-kw{color:var(--kw);font-weight:600;}
+.tok-str{color:var(--str);}
+.tok-num{color:var(--num);}
+.tok-cmt{color:var(--cmt);font-style:italic;}
+.tok-fn{color:var(--fn);}
+.tok-var{color:var(--var);}
+.tok-op{color:var(--punc);}
+.tok-punc{color:var(--punc);}
+
+/* ---- 结果面板 ---- */
+.results{flex:0 0 40%;min-height:90px;display:flex;flex-direction:column;background:var(--grid-bg);overflow:hidden;}
+.res-tabs{
+  height:25px;flex:0 0 25px;display:flex;align-items:stretch;
+  background:var(--panel-head);border-bottom:1px solid var(--border);
+}
+.res-tab{
+  display:flex;align-items:center;gap:6px;padding:0 14px;cursor:default;
+  color:var(--panel-fg);opacity:.7;font-size:11.5px;border-right:1px solid var(--border);
+}
+.res-tab:hover{opacity:1;background:var(--hover);}
+.res-tab.active{background:var(--grid-bg);opacity:1;color:var(--editor-fg);position:relative;}
+.res-tab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--grid-bg);}
+.res-tab .cnt{font-size:10px;opacity:.7;background:rgba(128,128,128,.22);border-radius:8px;padding:0 6px;}
+.res-body{flex:1;overflow:auto;position:relative;}
+
+table.grid{border-collapse:separate;border-spacing:0;font-size:12px;font-family:var(--font-ui);min-width:100%;}
+table.grid thead th{
+  position:sticky;top:0;z-index:3;background:var(--grid-head);color:var(--grid-head-fg);
+  text-align:left;font-weight:600;padding:5px 10px;white-space:nowrap;
+  border-right:1px solid var(--grid-line);border-bottom:1px solid var(--grid-line);
+  user-select:none;
+}
+table.grid thead th:last-child{border-right:0;}
+table.grid thead th .th-in{display:flex;align-items:center;gap:6px;}
+table.grid thead th .col-type{font-weight:400;opacity:.5;font-size:10px;font-family:var(--font-mono);}
+table.grid thead th .sort{margin-left:auto;opacity:.55;font-size:9px;}
+table.grid tbody td{
+  padding:4px 10px;white-space:nowrap;border-right:1px solid var(--grid-line);
+  border-bottom:1px solid var(--grid-line);color:var(--editor-fg);
+}
+table.grid tbody td:last-child{border-right:0;}
+table.grid tbody tr:nth-child(even) td{background:var(--grid-row-alt);}
+table.grid tbody tr:hover td{background:var(--hover);}
+table.grid tbody tr.selected td{background:var(--sel);color:var(--sel-fg);}
+table.grid td.null{color:var(--cmt);font-style:italic;opacity:.7;}
+table.grid td.num{text-align:right;font-family:var(--font-mono);font-size:11.5px;}
+td .rowno,.th-rowno{color:var(--gutter-fg);text-align:right;font-family:var(--font-mono);font-size:11px;position:sticky;left:0;background:var(--grid-head);z-index:4;}
+table.grid tbody td.rowno{background:var(--panel-head);z-index:2;}
+table.grid tbody tr:nth-child(even) td.rowno{background:var(--grid-head);}
+table.grid thead th.th-rowno{border-right:1px solid var(--grid-line);}
+
+/* 消息面板 */
+.messages{
+  padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:18px;
+  color:var(--editor-fg);white-space:pre-wrap;user-select:text;
+}
+.messages .ok{color:#4EC9B0;}
+.messages .err{color:#F48771;}
+.messages .warn{color:#DCDCAA;}
+.messages .dim{opacity:.6;}
+.messages b{color:var(--accent);}
+
+.empty-state{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:var(--panel-fg);opacity:.42;font-size:12px;text-align:center;padding:20px;
+}
+.empty-state svg{width:42px;height:42px;opacity:.6;}
+
+/* 执行进度条 */
+.progress{height:2px;background:transparent;flex:0 0 2px;overflow:hidden;}
+.progress .bar{height:100%;width:0;background:var(--accent);transition:width .18s ease;}
+
+/* ---- 状态栏 ---- */
+.statusbar{
+  height:23px;flex:0 0 23px;display:flex;align-items:center;gap:0;
+  background:var(--status-bg);color:var(--status-fg);
+  font-size:11px;padding:0 4px;
+}
+.statusbar .sb{
+  display:flex;align-items:center;gap:6px;padding:0 10px;height:100%;white-space:nowrap;
+}
+.statusbar .sb.click{cursor:default;}
+.statusbar .sb.click:hover{background:rgba(255,255,255,.16);}
+.statusbar .sb svg{width:12px;height:12px;}
+.statusbar .sb-sep{width:1px;height:12px;background:rgba(255,255,255,.35);}
+.statusbar .spacer{flex:1;}
+.statusbar .dot{width:7px;height:7px;border-radius:50%;background:#7CE38B;box-shadow:0 0 6px #7CE38B;}
+
+/* ---- 右键菜单 ---- */
+.ctx{
+  position:fixed;z-index:2000;min-width:220px;background:var(--menu-bg);
+  border:1px solid var(--border);box-shadow:var(--shadow);padding:4px 0;display:none;
+}
+.ctx.show{display:block;}
+.ctx .c-item{display:flex;align-items:center;gap:9px;padding:5px 14px 5px 12px;white-space:nowrap;cursor:default;}
+.ctx .c-item:hover{background:var(--sel);color:var(--sel-fg);}
+.ctx .c-item.dim{opacity:.45;}
+.ctx .c-item .c-ico{width:14px;height:14px;flex:0 0 14px;opacity:.9;}
+.ctx .c-item .arrow{margin-left:auto;padding-left:20px;opacity:.6;}
+.ctx .c-sep{height:1px;background:var(--border);margin:4px 0;}
+.ctx .c-title{padding:5px 12px;font-weight:600;opacity:.6;font-size:11px;}
+
+/* ---- 弹出对话框 ---- */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1500;display:none;align-items:center;justify-content:center;}
+.modal-mask.show{display:flex;}
+.modal{
+  width:420px;background:var(--panel-bg);border:1px solid var(--border);
+  box-shadow:var(--shadow);border-radius:3px;overflow:hidden;
+}
+.modal .m-head{height:30px;display:flex;align-items:center;padding:0 12px;background:var(--panel-head);font-weight:600;border-bottom:1px solid var(--border);}
+.modal .m-body{padding:14px 16px;font-size:12px;line-height:1.7;user-select:text;}
+.modal .m-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.modal .m-row label{width:88px;flex:0 0 88px;opacity:.85;}
+.modal .m-row input,.modal .m-row select{
+  flex:1;height:24px;background:var(--editor-bg);color:var(--panel-fg);
+  border:1px solid var(--border);border-radius:2px;padding:0 8px;font-family:var(--font-ui);font-size:12px;outline:none;user-select:text;
+}
+.modal .m-foot{padding:10px 14px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border-soft);background:var(--panel-head);}
+.btn{
+  height:24px;padding:0 16px;border-radius:2px;border:1px solid var(--border);
+  background:var(--toolbar-bg);color:var(--panel-fg);font-family:var(--font-ui);font-size:12px;cursor:default;
+}
+.btn:hover{background:var(--toolbar-hover);}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);}
+.btn.primary:hover{filter:brightness(1.12);}
+
+/* 提示 toast */
+.toast{
+  position:fixed;right:16px;bottom:34px;z-index:1800;
+  background:var(--panel-bg);border:1px solid var(--border);border-left:3px solid var(--accent);
+  box-shadow:var(--shadow);padding:9px 14px;font-size:12px;border-radius:3px;
+  opacity:0;transform:translateY(10px);transition:all .2s ease;pointer-events:none;max-width:340px;
+}
+.toast.show{opacity:1;transform:translateY(0);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 标题栏 ============ -->
+  <div class="titlebar">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#A4373A"/>
+      <path d="M5 8v16c0 2.3 4.9 4.2 11 4.2s11-1.9 11-4.2V8" fill="#B84B4E"/>
+      <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#D96A6D"/>
+      <ellipse cx="16" cy="7" rx="7" ry="2.5" fill="#F2B7B8"/>
+    </svg>
+    <span class="t-text">SQL Server Management Studio</span>
+    <span class="t-sub">— DESKTOP-SQL01 (SQL Server 2022) — 17.0.1000.7</span>
+    <span class="spacer"></span>
+    <div class="win-btns">
+      <span title="最小化">—</span><span title="最大化">▢</span><span class="close" title="关闭">✕</span>
+    </div>
+  </div>
+
+  <!-- ============ 菜单栏 ============ -->
+  <div class="menubar" id="menubar">
+    <div class="m-item" data-menu="file">文件(F)
+      <div class="dropdown">
+        <div class="d-item"><span class="chk">▤</span>新建(N)<span class="kbd">Ctrl+N</span></div>
+        <div class="d-item"><span class="chk">▤</span>打开(O)...<span class="kbd">Ctrl+O</span></div>
+        <div class="d-item"><span class="chk">▤</span>保存(S)<span class="kbd">Ctrl+S</span></div>
+        <div class="d-item"><span class="chk">▤</span>另存为(A)...</div>
+        <div class="d-sep"></div>
+        <div class="d-item"><span class="chk">▤</span>连接对象资源管理器(E)...<span class="kbd">Ctrl+Alt+C</span></div>
+        <div class="d-item"><span class="chk">▤</span>断开连接(D)</div>
+        <div class="d-sep"></div>
+        <div class="d-item"><span class="chk">▤</span>退出(X)</div>
+      </div>
+    </div>
+    <div class="m-item" data-menu="edit">编辑(E)
+      <div class="dropdown">
+        <div class="d-item"><span class="chk">▤</span>撤销(U)<span class="kbd">Ctrl+Z</span></div>
+        <div class="d-item"><span class="chk">▤</span>重做(R)<span class="kbd">Ctrl+Y</span></div>
+        <div class="d-sep"></div>
+        <div class="d-item"><span class="chk">▤</span>剪切(T)<span class="kbd">Ctrl+X</span></div>
+        <div class="d-item"><span class="chk">▤</span>复制(C)<span class="kbd">Ctrl+C</span></div>
+        <div class="d-item"><span class="chk">▤</span>粘贴(P)<span class="kbd">Ctrl+V</span></div>
+        <div class="d-sep"></div>
+        <div class="d-item"><span class="chk">▤</span>查找和替换(F)<span class="kbd">Ctrl+F</span></div>
+        <div class="d-item"><span class="chk">▤</span>转到行(G)...<span class="kbd">Ctrl+G</span></div>
+      </div>
+    </div>
+    <div class="m-item" data-menu="view">视图(V)
+      <div class="dropdown">
+        <div class="d-item" data-action="toggle-explorer"><span class="chk">✓</span>对象资源管理器(O)<span class="kbd">F8</span></div>
+        <div class="d-item"><span class="chk">▤</span>模板浏览器(T)<span class="kbd">Ctrl+Alt+T</span></div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="theme"><span class="chk">▤</span>主题切换：深色 / 浅色</div>
+        <div class="d-item"><span class="chk">▤</span>工具栏(T) ▸</div>
+      </div>
+    </div>
+    <div class="m-item" data-menu="tools">工具(T)
+      <div class="dropdown">
+        <div class="d-item"><span class="chk">▤</span>SQL Server Profiler</div>
+        <div class="d-item"><span class="chk">▤</span>数据库引擎优化顾问</div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="options"><span class="chk">▤</span>选项(O)...</div>
+      </div>
+    </div>
+    <div class="m-item" data-menu="window">窗口(W)
+      <div class="dropdown">
+        <div class="d-item"><span class="chk">▤</span>新建窗口(N)<span class="kbd">Ctrl+N</span></div>
+        <div class="d-item"><span class="chk">▤</span>关闭所有文档(L)</div>
+        <div class="d-sep"></div>
+        <div class="d-item"><span class="chk">▤</span>重置窗口布局(R)</div>
+      </div>
+    </div>
+    <div class="m-item" data-menu="help">帮助(H)
+      <div class="dropdown">
+        <div class="d-item"><span class="chk">▤</span>SQL Server 文档</div>
+        <div class="d-item"><span class="chk">▤</span>键盘快捷键</div>
+        <div class="d-sep"></div>
+        <div class="d-item" data-action="about"><span class="chk">▤</span>关于(A)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 工具栏 ============ -->
+  <div class="toolbar">
+    <div class="tb-btn" data-action="new" title="新建查询 (Ctrl+N)">
+      <svg viewBox="0 0 16 16"><path d="M3 1h7l3 3v11H3z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10 1v3h3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 8h6M5 10.5h6" stroke="currentColor" stroke-width="1.1"/></svg>
+    </div>
+    <div class="tb-btn" data-action="open" title="打开文件 (Ctrl+O)">
+      <svg viewBox="0 0 16 16"><path d="M1.5 3.5h4l1.3 1.6h7.7v7.4H1.5z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+    </div>
+    <div class="tb-btn" data-action="save" title="保存 (Ctrl+S)">
+      <svg viewBox="0 0 16 16"><path d="M2 2h9l3 3v9H2z" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="5" y="2" width="5" height="4" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="4.5" y="9" width="7" height="5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn exec" data-action="execute" title="执行 (F5)">
+      <svg viewBox="0 0 16 16"><path d="M3.5 2.4 13 8l-9.5 5.6z" fill="#4E9A3F" stroke="#2F742C" stroke-width="1"/></svg>
+    </div>
+    <div class="tb-btn" data-action="parse" title="分析 (Ctrl+F5)">
+      <svg viewBox="0 0 16 16"><path d="M2 2h12M2 6h8M2 10h12M2 14h8" stroke="#4E9A3F" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </div>
+    <div class="tb-btn" data-action="cancel" title="取消执行查询 (Alt+Break)">
+      <svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1" fill="#C42B1C"/></svg>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="connect" title="连接到服务器">
+      <svg viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="5.5" ry="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 4v8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2V4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+    </div>
+    <div class="tb-btn" data-action="disconnect" title="断开连接">
+      <svg viewBox="0 0 16 16"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="filter" title="显示估计的执行计划">
+      <svg viewBox="0 0 16 16"><path d="M2 2h5l4 6v6H2z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M11 2h3v3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+    </div>
+    <div class="tb-btn" data-action="db" title="可用数据库">
+      <svg viewBox="0 0 16 16"><ellipse cx="8" cy="3.6" rx="5.5" ry="2.1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 3.6v8.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V3.6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      <span class="tb-label" id="curDb">SalesDB</span>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-btn" data-action="theme" title="切换主题">
+      <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>
+    </div>
+    <div class="tb-btn" data-action="about" title="关于">
+      <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 7v5M8 4.6v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+  </div>
+
+  <!-- ============ 主体 ============ -->
+  <div class="main" id="main">
+
+    <!-- 对象资源管理器 -->
+    <div class="explorer" id="explorer">
+      <div class="panel-head">
+        <svg viewBox="0 0 16 16" style="width:12px;height:12px"><ellipse cx="8" cy="4" rx="5" ry="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+        对象资源管理器
+        <div class="ph-actions">
+          <div class="ph-btn" data-action="connect" title="连接">
+            <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-btn" data-action="refresh" title="刷新">
+            <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5V5h-2.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-btn" data-action="collapse" title="全部折叠">
+            <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="oe-search">
+        <svg class="si" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.3 10.3 14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <input id="treeFilter" type="text" placeholder="搜索对象…" spellcheck="false">
+      </div>
+      <div class="tree" id="tree"></div>
+    </div>
+
+    <div class="splitter-v" id="splitV"></div>
+
+    <!-- 工作区 -->
+    <div class="workspace">
+      <div class="doc-tabs" id="docTabs"></div>
+
+      <div class="editor-host" id="editorHost">
+        <div class="editor" id="editor">
+          <div class="gutter" id="gutter"></div>
+          <div class="code-scroll" id="codeScroll">
+            <div class="code-inner">
+              <pre class="hl" id="hl"></pre>
+              <textarea id="sql" spellcheck="false" wrap="soft"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress"><div class="bar" id="progBar"></div></div>
+        <div class="splitter-h" id="splitH"></div>
+
+        <div class="results" id="results">
+          <div class="res-tabs">
+            <div class="res-tab active" data-res="grid">结果 <span class="cnt" id="rowCnt">0</span></div>
+            <div class="res-tab" data-res="msg">消息</div>
+          </div>
+          <div class="res-body" id="resBody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 状态栏 ============ -->
+  <div class="statusbar">
+    <div class="sb"><span class="dot"></span>已连接</div>
+    <div class="sb-sep"></div>
+    <div class="sb click" id="sbServer">DESKTOP-SQL01 (17.0.1000.7) · sa</div>
+    <div class="sb-sep"></div>
+    <div class="sb click" id="sbDb">SalesDB</div>
+    <div class="spacer"></div>
+    <div class="sb" id="sbStatus">就绪</div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbPos">行 1, 列 1</div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbRows">0 行</div>
+    <div class="sb-sep"></div>
+    <div class="sb" id="sbTime">00:00:00</div>
+  </div>
+</div>
+
+<!-- 右键菜单 -->
+<div class="ctx" id="ctx"></div>
+
+<!-- 通用对话框 -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <div class="m-head" id="modalTitle">连接到服务器</div>
+    <div class="m-body" id="modalBody"></div>
+    <div class="m-foot">
+      <button class="btn primary" id="modalOk">确定</button>
+      <button class="btn" id="modalCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   1. 模拟数据库元数据 + 数据
+   ============================================================ */
+const TABLES = {
+  Customers: {
+    schema:'dbo',
+    columns:[
+      {name:'CustomerID', type:'int', pk:true},
+      {name:'CompanyName', type:'nvarchar(80)'},
+      {name:'ContactName', type:'nvarchar(60)'},
+      {name:'City', type:'nvarchar(40)'},
+      {name:'Country', type:'nvarchar(40)'},
+      {name:'Phone', type:'nvarchar(30)'},
+      {name:'CreatedAt', type:'datetime'}
+    ],
+    rows:[
+      [1,'Alfreds Futterkiste','Maria Anders','Berlin','Germany','030-0074321','2023-01-14'],
+      [2,'Ana Trujillo Emparedados','Ana Trujillo','México D.F.','Mexico','(5) 555-4729','2023-01-22'],
+      [3,'Antonio Moreno Taquería','Antonio Moreno','México D.F.','Mexico','(5) 555-3932','2023-02-03'],
+      [4,'Around the Horn','Thomas Hardy','London','UK','(171) 555-7788','2023-02-19'],
+      [5,'Berglunds snabbköp','Christina Berglund','Luleå','Sweden','0921-12 34 65','2023-03-05'],
+      [6,'Blauer See Delikatessen','Hanna Moos','Mannheim','Germany','0621-08460','2023-03-27'],
+      [7,'Blondel père et fils','Frédérique Citeaux','Strasbourg','France','88.60.15.31','2023-04-11'],
+      [8,'Bólido Comidas preparadas','Martín Sommer','Madrid','Spain','(91) 555 22 82','2023-04-30'],
+      [9,'Bon app\'','Laurence Lebihans','Marseille','France','91.24.45.40','2023-05-16'],
+      [10,'Bottom-Dollar Markets','Elizabeth Lincoln','Tsawassen','Canada','(604) 555-4729','2023-06-02'],
+      [11,'Cactus Comidas para llevar','Patricio Simpson','Buenos Aires','Argentina','(1) 135-5555','2023-06-21'],
+      [12,'Chop-suey Chinese','Yang Wang','Bern','Switzerland','0452-076545','2023-07-08']
+    ]
+  },
+  Orders: {
+    schema:'dbo',
+    columns:[
+      {name:'OrderID', type:'int', pk:true},
+      {name:'CustomerID', type:'int', fk:'Customers.CustomerID'},
+      {name:'ProductName', type:'nvarchar(60)'},
+      {name:'Quantity', type:'int'},
+      {name:'UnitPrice', type:'decimal(10,2)'},
+      {name:'Amount', type:'decimal(12,2)'},
+      {name:'OrderDate', type:'date'},
+      {name:'Status', type:'nvarchar(20)'}
+    ],
+    rows:[
+      [10248,4,'Queso Cabrales',12,14.00,168.00,'2024-01-05','已完成'],
+      [10249,8,'Tofu',9,46.90,422.10,'2024-01-08','已完成'],
+      [10250,3,'Manjimup Dried Apples',10,53.00,530.00,'2024-01-12','已发货'],
+      [10251,5,'Gustaf\'s Knäckebröd',6,15.60,93.60,'2024-01-18','已发货'],
+      [10252,7,'Sir Rodney\'s Marmalade',40,28.50,1140.00,'2024-01-24','处理中'],
+      [10253,3,'Chartreuse verte',20,18.00,360.00,'2024-02-01','已完成'],
+      [10254,1,'Pâté chinois',15,16.00,240.00,'2024-02-07','已取消'],
+      [10255,6,'Chang',25,19.00,475.00,'2024-02-13','已完成'],
+      [10256,8,'Ravioli Angelo',24,22.00,528.00,'2024-02-20','已发货'],
+      [10257,3,'Ikura',8,31.00,248.00,'2024-02-27','处理中'],
+      [10258,2,'Chai',30,18.00,540.00,'2024-03-04','已完成'],
+      [10259,1,'Chang',10,19.00,190.00,'2024-03-11','已发货'],
+      [10260,5,'Aniseed Syrup',18,10.00,180.00,'2024-03-19','已完成'],
+      [10261,12,'Ikura',14,31.00,434.00,'2024-03-26','处理中'],
+      [10262,7,'Tofu',22,46.90,1031.80,'2024-04-02','已完成'],
+      [10263,9,'Queso Cabrales',9,14.00,126.00,'2024-04-09','已发货'],
+      [10264,10,'Chang',35,19.00,665.00,'2024-04-16','已完成'],
+      [10265,2,'Ravioli Angelo',12,22.00,264.00,'2024-04-23','处理中']
+    ]
+  },
+  Products: {
+    schema:'dbo',
+    columns:[
+      {name:'ProductID', type:'int', pk:true},
+      {name:'ProductName', type:'nvarchar(60)'},
+      {name:'Category', type:'nvarchar(30)'},
+      {name:'UnitPrice', type:'decimal(10,2)'},
+      {name:'UnitsInStock', type:'smallint'},
+      {name:'Discontinued', type:'bit'}
+    ],
+    rows:[
+      [1,'Chai','Beverages',18.00,39,0],
+      [2,'Chang','Beverages',19.00,17,0],
+      [3,'Aniseed Syrup','Condiments',10.00,13,0],
+      [4,'Chef Anton\'s Cajun Seasoning','Condiments',22.00,53,0],
+      [5,'Chef Anton\'s Gumbo Mix','Condiments',21.35,0,1],
+      [6,'Grandma\'s Boysenberry Spread','Condiments',25.00,120,0],
+      [7,'Uncle Bob\'s Organic Dried Pears','Produce',30.00,15,0],
+      [8,'Northwoods Cranberry Sauce','Condiments',40.00,6,0],
+      [9,'Mishi Kobe Niku','Meat/Poultry',97.00,29,1],
+      [10,'Ikura','Seafood',31.00,31,0],
+      [11,'Queso Cabrales','Dairy',21.00,22,0],
+      [12,'Queso Manchego La Pastora','Dairy',38.00,86,0]
+    ]
+  },
+  Employees: {
+    schema:'dbo',
+    columns:[
+      {name:'EmployeeID', type:'int', pk:true},
+      {name:'FullName', type:'nvarchar(60)'},
+      {name:'Title', type:'nvarchar(40)'},
+      {name:'Department', type:'nvarchar(30)'},
+      {name:'City', type:'nvarchar(30)'},
+      {name:'Salary', type:'decimal(10,2)'},
+      {name:'HireDate', type:'date'}
+    ],
+    rows:[
+      [1,'Nancy Davolio','销售代表','销售部','Seattle',72000.00,'2019-05-01'],
+      [2,'Andrew Fuller','销售副总裁','销售部','Tacoma',135000.00,'2018-08-14'],
+      [3,'Janet Leverling','销售代表','销售部','Kirkland',68000.00,'2020-04-01'],
+      [4,'Margaret Peacock','销售代表','销售部','Redmond',69000.00,'2020-05-03'],
+      [5,'Steven Buchanan','销售经理','销售部','London',96000.00,'2019-10-17'],
+      [6,'Michael Suyama','销售代表','销售部','London',64000.00,'2021-10-17'],
+      [7,'Robert King','销售代表','销售部','London',65000.00,'2022-01-02'],
+      [8,'Laura Callahan','内部协调员','运营部','Seattle',58000.00,'2021-03-05']
+    ]
+  },
+  Invoices: {
+    schema:'dbo',
+    columns:[
+      {name:'InvoiceID', type:'int', pk:true},
+      {name:'CustomerID', type:'int', fk:'Customers.CustomerID'},
+      {name:'OrderID', type:'int', fk:'Orders.OrderID'},
+      {name:'InvoiceDate', type:'date'},
+      {name:'Total', type:'decimal(12,2)'},
+      {name:'Paid', type:'bit'}
+    ],
+    rows:[
+      [5001,4,10248,'2024-01-06',168.00,1],
+      [5002,8,10249,'2024-01-09',422.10,1],
+      [5003,3,10250,'2024-01-13',530.00,0],
+      [5004,5,10251,'2024-01-19',93.60,1],
+      [5005,7,10252,'2024-01-25',1140.00,0]
+    ]
+  }
+};
+const VIEWS = ['vw_CustomerOrders','vw_ProductStock','vw_MonthlyRevenue'];
+
+/* ============================================================
+   2. 对象树结构
+   ============================================================ */
+const TREE = {
+  type:'server', name:'DESKTOP-SQL01 (SQL Server 2022)', icon:'server',
+  children:[
+    {type:'folder', name:'Databases', icon:'folder', children:[
+      {type:'folder', name:'系统数据库', icon:'folder', children:[
+        {type:'db', name:'master', icon:'db', system:true},
+        {type:'db', name:'model',  icon:'db', system:true},
+        {type:'db', name:'msdb',   icon:'db', system:true},
+        {type:'db', name:'tempdb', icon:'db', system:true}
+      ]},
+      {type:'db', name:'SalesDB', icon:'db', current:true, children:[
+        {type:'folder', name:'表', icon:'folder', children:
+          Object.keys(TABLES).map(t=>({type:'table', name:'dbo.'+t, table:t, icon:'table'}))
+        },
+        {type:'folder', name:'视图', icon:'folder', children:
+          VIEWS.map(v=>({type:'view', name:'dbo.'+v, icon:'view'}))
+        },
+        {type:'folder', name:'可编程性', icon:'folder', children:[
+          {type:'folder', name:'存储过程', icon:'folder', children:[
+            {type:'proc', name:'dbo.usp_GetCustomerOrders', icon:'proc'},
+            {type:'proc', name:'dbo.usp_UpdateStock', icon:'proc'},
+            {type:'folder', name:'系统存储过程', icon:'folder'}
+          ]},
+          {type:'folder', name:'函数', icon:'folder', children:[
+            {type:'func', name:'dbo.fn_GetOrderTotal', icon:'func'},
+            {type:'func', name:'dbo.fn_Tax', icon:'func'}
+          ]},
+          {type:'folder', name:'程序集', icon:'folder'},
+          {type:'folder', name:'触发器', icon:'folder'}
+        ]},
+        {type:'folder', name:'安全性', icon:'folder', children:[
+          {type:'folder', name:'用户', icon:'folder', children:[{type:'user', name:'dbo', icon:'user'}]},
+          {type:'folder', name:'角色', icon:'folder'},
+          {type:'folder', name:'架构', icon:'folder', children:[{type:'schema', name:'dbo', icon:'schema'}]}
+        ]}
+      ]},
+      {type:'db', name:'InventoryDB', icon:'db', children:[
+        {type:'folder', name:'表', icon:'folder', children:[
+          {type:'table', name:'dbo.Warehouses', icon:'table'},
+          {type:'table', name:'dbo.StockItems', icon:'table'}
+        ]},
+        {type:'folder', name:'视图', icon:'folder'}
+      ]}
+    ]},
+    {type:'folder', name:'安全性', icon:'folder', children:[
+      {type:'folder', name:'登录名', icon:'folder', children:[{type:'user', name:'sa', icon:'user'},{type:'user', name:'NT AUTHORITY\\SYSTEM', icon:'user'}]},
+      {type:'folder', name:'服务器角色', icon:'folder'}
+    ]},
+    {type:'folder', name:'服务器对象', icon:'folder', children:[
+      {type:'folder', name:'备份设备', icon:'folder'},
+      {type:'folder', name:'链接服务器', icon:'folder'}
+    ]},
+    {type:'folder', name:'复制', icon:'folder'},
+    {type:'folder', name:'管理', icon:'folder', children:[
+      {type:'folder', name:'维护计划', icon:'folder'},
+      {type:'folder', name:'SQL Server 日志', icon:'folder'},
+      {type:'folder', name:'活动监视器', icon:'folder'}
+    ]}
+  ]
+};
+
+/* 图标集合 */
+const ICONS = {
+  server:'<ellipse cx="8" cy="4" rx="5.4" ry="2.1" fill="none" stroke="#D2A24C" stroke-width="1.3"/><path d="M2.6 4v8c0 1.2 2.4 2.1 5.4 2.1s5.4-.9 5.4-2.1V4" fill="none" stroke="#D2A24C" stroke-width="1.3"/><path d="M2.6 8c0 1.2 2.4 2.1 5.4 2.1s5.4-.9 5.4-2.1" fill="none" stroke="#D2A24C" stroke-width="1.1"/>',
+  db:'<ellipse cx="8" cy="4" rx="5.4" ry="2.1" fill="#3E7CB1"/><path d="M2.6 4v8c0 1.2 2.4 2.1 5.4 2.1s5.4-.9 5.4-2.1V4" fill="#3E7CB1"/><ellipse cx="8" cy="4" rx="5.4" ry="2.1" fill="#5B9BD5"/><path d="M2.6 7.2c0 1.2 2.4 2.1 5.4 2.1s5.4-.9 5.4-2.1" fill="none" stroke="#2A5A82" stroke-width=".8"/><ellipse cx="8" cy="3.2" rx="2.6" ry="1" fill="#A8CBE8"/>',
+  folder:'<path d="M1.6 3.4h4.2l1.4 1.7h7.2v7.5H1.6z" fill="#E0B24A" stroke="#B98D2E" stroke-width=".9"/>',
+  table:'<rect x="2" y="2.6" width="12" height="10.8" rx="1" fill="#8FBEE0" stroke="#4A86B8" stroke-width="1"/><path d="M2 6h12M6 6v7.4M10 6v7.4M2 9.6h12" stroke="#4A86B8" stroke-width=".9"/>',
+  view:'<rect x="2" y="3" width="12" height="10" rx="1" fill="#B7D7EE" stroke="#5B9BD5" stroke-width="1"/><path d="M4.5 6h7M4.5 8.4h7M4.5 10.8h4.5" stroke="#5B9BD5" stroke-width=".9"/>',
+  proc:'<rect x="3" y="2" width="10" height="12" rx="1.2" fill="#C9E3C4" stroke="#5E9A52" stroke-width="1"/><path d="M6.5 5.5 5 8l1.5 2.5M9.5 5.5 11 8l-1.5 2.5" fill="none" stroke="#3E7A34" stroke-width="1.1" stroke-linecap="round"/>',
+  func:'<rect x="3" y="2" width="10" height="12" rx="1.2" fill="#E7D6F0" stroke="#8E5FA8" stroke-width="1"/><text x="8" y="11" font-size="7.5" text-anchor="middle" fill="#6A3F82" font-family="Consolas">fx</text>',
+  user:'<circle cx="8" cy="5.6" r="2.6" fill="#F0C48A" stroke="#B98D4E" stroke-width="1"/><path d="M2.8 13.6c0-2.6 2.3-4.2 5.2-4.2s5.2 1.6 5.2 4.2z" fill="#F0C48A" stroke="#B98D4E" stroke-width="1"/>',
+  schema:'<rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1" fill="#DCDCDC" stroke="#8A8A8A" stroke-width="1"/><path d="M6 5.4h4M6 8h4M6 10.6h2.6" stroke="#8A8A8A" stroke-width="1"/>',
+  query:'<path d="M3 1.6h7l3 3v9.8H3z" fill="#EAF2FB" stroke="#5B9BD5" stroke-width="1"/><path d="M10 1.6v3h3" fill="none" stroke="#5B9BD5" stroke-width="1"/><path d="M5.4 8h5.2M5.4 10.4h5.2" stroke="#5B9BD5" stroke-width=".9"/>'
+};
+function icon(name, size){
+  size = size||15;
+  return '<svg class="ico" viewBox="0 0 16 16" width="'+size+'" height="'+size+'">'+(ICONS[name]||ICONS.folder)+'</svg>';
+}
+
+/* ============================================================
+   3. 查询文档管理
+   ============================================================ */
+const STARTER_SQL =
+`-- =============================================
+--  SalesDB 查询窗口
+--  提示：在左侧“对象资源管理器”中双击表名，
+--        可自动生成 SELECT TOP 1000 查询。
+-- =============================================
+USE SalesDB;
+GO
+
+SELECT TOP 1000
+       c.CompanyName,
+       c.City,
+       c.Country,
+       COUNT(o.OrderID)  AS OrderCount,
+       SUM(o.Amount)     AS TotalAmount
+FROM   dbo.Customers AS c
+LEFT JOIN dbo.Orders AS o
+       ON o.CustomerID = c.CustomerID
+GROUP BY c.CompanyName, c.City, c.Country
+ORDER BY TotalAmount DESC;
+`;
+
+let docs = [];
+let activeId = null;
+let seq = 0;
+
+function newDoc(sql, title){
+  seq++;
+  const d = {
+    id:'doc'+seq,
+    title: title || ('SQLQuery'+seq+'.sql'),
+    sql: sql !== undefined ? sql : '',
+    dirty:false,
+    result:null,
+    message:null,
+    activeRes:'grid'
+  };
+  docs.push(d);
+  return d;
+}
+
+/* ============================================================
+   4. 树渲染
+   ============================================================ */
+const treeEl = document.getElementById('tree');
+let nodeSeq = 0;
+
+function buildNode(data, depth, parentEl){
+  const li = document.createElement('li');
+  const hasChildren = !!(data.children && data.children.length);
+  const isExpanded = depth < 2;      // 默认展开前两层
+  const id = 'n'+(++nodeSeq);
+
+  const row = document.createElement('div');
+  row.className = 'node';
+  row.dataset.id = id;
+  row.dataset.depth = depth;
+  row.style.paddingLeft = (6 + depth*14) + 'px';
+  row.dataset.name = data.name;
+  row.dataset.type = data.type;
+
+  const caret = document.createElement('span');
+  caret.className = 'caret' + (hasChildren ? '' : ' leaf') + (isExpanded && hasChildren ? ' open' : '');
+  caret.textContent = '▶';
+  row.appendChild(caret);
+
+  const icoWrap = document.createElement('span');
+  icoWrap.innerHTML = icon(data.icon || 'folder');
+  row.appendChild(icoWrap.firstChild);
+
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = data.name;
+  row.appendChild(label);
+
+  if (data.type === 'db' && data.system) {
+    const b = document.createElement('span'); b.className='badge'; b.textContent='系统'; row.appendChild(b);
+  }
+  if (data.current) {
+    const b = document.createElement('span'); b.className='badge'; b.textContent='当前'; row.appendChild(b);
+  }
+  if (data.type === 'table' && TABLES[data.table]) {
+    const b = document.createElement('span'); b.className='badge'; b.textContent=TABLES[data.table].rows.length+' 行'; row.appendChild(b);
+  }
+
+  li.appendChild(row);
+
+  if (hasChildren){
+    const ul = document.createElement('ul');
+    ul.className = 'children' + (isExpanded ? '' : ' collapsed');
+    data.children.forEach(c => buildNode(c, depth+1, ul));
+    li.appendChild(ul);
+    row._caret = caret;
+    row._ul = ul;
+  }
+
+  row._data = data;
+  parentEl.appendChild(li);
+  return li;
+}
+
+function renderTree(){
+  treeEl.innerHTML = '';
+  nodeSeq = 0;
+  const ul = document.createElement('ul');
+  ul.className = 'children';
+  buildNode(TREE, 0, ul);
+  treeEl.appendChild(ul);
+  applyFilter();
+}
+
+/* 展开 / 折叠 */
+treeEl.addEventListener('click', (e)=>{
+  const row = e.target.closest('.node');
+  if (!row) return;
+  const caret = e.target.closest('.caret');
+  if (caret && !caret.classList.contains('leaf')){
+    caret.classList.toggle('open');
+    row._ul.classList.toggle('collapsed');
+    return;
+  }
+  selectNode(row);
+  // 单击表：不自动展开；单击文件夹节点：切换展开
+  if (row._ul && !caret){
+    row._caret.classList.toggle('open');
+    row._ul.classList.toggle('collapsed');
+  }
+});
+
+treeEl.addEventListener('dblclick', (e)=>{
+  const row = e.target.closest('.node');
+  if (!row) return;
+  const d = row._data;
+  if (d.type === 'table' && TABLES[d.table]) openTableQuery(d.table);
+  else if (d.type === 'view') toast('视图定义已在新查询窗口中打开：'+d.name);
+});
+
+function selectNode(row){
+  treeEl.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));
+  row.classList.add('selected');
+  const d = row._data;
+  if (d.type==='db' && d.name!=='系统数据库'){
+    document.getElementById('sbDb').textContent = d.name;
+    document.getElementById('curDb').textContent = d.name;
+  }
+}
+
+/* 筛选 */
+const treeFilter = document.getElementById('treeFilter');
+function applyFilter(){
+  const q = treeFilter.value.trim().toLowerCase();
+  const rows = treeEl.querySelectorAll('.node');
+  if (!q){
+    rows.forEach(r=>r.classList.remove('filtered-out'));
+    return;
+  }
+  // 自底向上：命中自身或子节点命中则显示
+  const all = Array.from(rows).reverse();
+  const hit = new Map();
+  all.forEach(r=>{
+    const self = r.dataset.name.toLowerCase().includes(q);
+    const ul = r._ul;
+    let childHit = false;
+    if (ul) ul.querySelectorAll(':scope > li > .node').forEach(c=>{ if (hit.get(c)) childHit = true; });
+    const ok = self || childHit;
+    hit.set(r, ok);
+    r.classList.toggle('filtered-out', !ok);
+    if (childHit && r._ul){ r._ul.classList.remove('collapsed'); r._caret && r._caret.classList.add('open'); }
+  });
+}
+treeFilter.addEventListener('input', applyFilter);
+
+/* ============================================================
+   5. 右键菜单
+   ============================================================ */
+const ctxEl = document.getElementById('ctx');
+let ctxTarget = null;
+
+treeEl.addEventListener('contextmenu', (e)=>{
+  const row = e.target.closest('.node');
+  if (!row) return;
+  e.preventDefault();
+  selectNode(row);
+  ctxTarget = row._data;
+  showTreeContext(e.clientX, e.clientY, row._data);
+});
+
+function menuItem(ico, text, action, extra){
+  return '<div class="c-item" data-action="'+action+'"><span class="c-ico">'+(ICONS[ico]||ICONS.folder)+'</span>'+text+(extra||'')+'</div>';
+}
+function showTreeContext(x,y,d){
+  let html = '';
+  if (d.type==='server'){
+    html += '<div class="c-title">'+d.name+'</div>'
+      + menuItem('query','新建查询(N)','new-query')
+      + menuItem('query','新建数据库(E)...','new-db')
+      + menuItem('server','活动监视器(A)','monitor')
+      + '<div class="c-sep"></div>'
+      + menuItem('server','属性(R)','props')
+      + menuItem('server','刷新(F)','refresh');
+  } else if (d.type==='db'){
+    html += '<div class="c-title">'+d.name+'</div>'
+      + menuItem('query','新建查询(N)','new-query')
+      + menuItem('query','编写数据库脚本(S) ▸','script-db','<span class="arrow">▸</span>')
+      + '<div class="c-sep"></div>'
+      + menuItem('folder','任务(T) ▸','tasks','<span class="arrow">▸</span>')
+      + menuItem('db','分离(D)...','detach')
+      + menuItem('db','删除(E)','drop-db')
+      + '<div class="c-sep"></div>'
+      + menuItem('folder','刷新(F)','refresh')
+      + menuItem('db','属性(R)','props');
+  } else if (d.type==='table'){
+    html += '<div class="c-title">'+d.name+'</div>'
+      + menuItem('query','选择前 1000 行(V)','top1000')
+      + menuItem('query','编辑前 200 行(E)','edit200')
+      + '<div class="c-sep"></div>'
+      + menuItem('query','编写表脚本(S) ▸','script-table','<span class="arrow">▸</span>')
+      + menuItem('table','查看依赖关系(D)','deps')
+      + '<div class="c-sep"></div>'
+      + menuItem('folder','刷新(F)','refresh')
+      + menuItem('table','属性(R)','props');
+  } else if (d.type==='view'){
+    html += '<div class="c-title">'+d.name+'</div>'
+      + menuItem('query','选择前 1000 行(V)','top1000')
+      + menuItem('query','设计(D)','design')
+      + '<div class="c-sep"></div>'
+      + menuItem('folder','刷新(F)','refresh')
+      + menuItem('view','属性(R)','props');
+  } else if (d.type==='proc' || d.type==='func'){
+    html += '<div class="c-title">'+d.name+'</div>'
+      + menuItem('query','执行存储过程(E)...','exec-proc')
+      + menuItem('query','修改(M)','modify')
+      + '<div class="c-sep"></div>'
+      + menuItem('folder','刷新(F)','refresh')
+      + menuItem('proc','属性(R)','props');
+  } else {
+    html += '<div class="c-title">'+d.name+'</div>'
+      + menuItem('query','新建查询(N)','new-query')
+      + menuItem('folder','刷新(F)','refresh');
+  }
+  ctxEl.innerHTML = html;
+  ctxEl.classList.add('show');
+  const w = ctxEl.offsetWidth, h = ctxEl.offsetHeight;
+  ctxEl.style.left = Math.min(x, innerWidth-w-6)+'px';
+  ctxEl.style.top  = Math.min(y, innerHeight-h-6)+'px';
+}
+
+ctxEl.addEventListener('click',(e)=>{
+  const it = e.target.closest('.c-item');
+  if (!it) return;
+  hideCtx();
+  handleCtxAction(it.dataset.action);
+});
+function hideCtx(){ ctxEl.classList.remove('show'); }
+document.addEventListener('mousedown',(e)=>{ if(!ctxEl.contains(e.target)) hideCtx(); });
+window.addEventListener('blur', hideCtx);
+
+function handleCtxAction(a){
+  const d = ctxTarget || {};
+  switch(a){
+    case 'new-query': doNew(); break;
+    case 'top1000': openTableQuery(d.table); break;
+    case 'edit200': openTableQuery(d.table, 200, true); break;
+    case 'new-db': openModal('新建数据库', dbFormHtml()); break;
+    case 'props': toast('已打开属性对话框：'+(d.name||'')); break;
+    case 'refresh': spinRefresh(); toast('对象资源管理器已刷新'); break;
+    case 'drop-db': toast('⚠ 需要确认才能删除数据库 '+(d.name||'')); break;
+    case 'monitor': toast('正在启动活动监视器…'); break;
+    case 'exec-proc': toast('已执行 '+d.name); break;
+    case 'script-table':
+    case 'script-db':
+    case 'modify':
+    case 'design':
+    case 'deps':
+    case 'detach':
+    case 'tasks':
+      toast('已生成脚本并放入新查询窗口：'+(d.name||'')); doNew('-- 由 '+(d.name||'')+' 生成的脚本\n'); break;
+    default: toast('操作：'+a);
+  }
+}
+
+/* ============================================================
+   6. 查询文档 UI
+   ============================================================ */
+const docTabsEl = document.getElementById('docTabs');
+const sqlEl     = document.getElementById('sql');
+const hlEl      = document.getElementById('hl');
+const gutterEl  = document.getElementById('gutter');
+const codeScroll= document.getElementById('codeScroll');
+const resBody   = document.getElementById('resBody');
+const rowCntEl  = document.getElementById('rowCnt');
+
+function renderTabs(){
+  docTabsEl.innerHTML = '';
+  docs.forEach(d=>{
+    const t = document.createElement('div');
+    t.className = 'doc-tab' + (d.id===activeId?' active':'');
+    t.dataset.id = d.id;
+    t.innerHTML = '<svg class="t-ico" viewBox="0 0 16 16">'+ICONS.query+'</svg>'
+      + '<span class="t-name">'+d.title+'</span>'
+      + (d.dirty ? '<span class="dirty"></span>' : '')
+      + '<span class="t-close" data-close="'+d.id+'">✕</span>';
+    docTabsEl.appendChild(t);
+  });
+}
+docTabsEl.addEventListener('click',(e)=>{
+  const close = e.target.closest('.t-close');
+  if (close){ closeDoc(close.dataset.close); return; }
+  const tab = e.target.closest('.doc-tab');
+  if (tab) switchDoc(tab.dataset.id);
+});
+
+function currentDoc(){ return docs.find(d=>d.id===activeId); }
+
+function switchDoc(id){
+  const d = currentDoc();
+  if (d){ d.sql = sqlEl.value; }
+  activeId = id;
+  const nd = currentDoc();
+  sqlEl.value = nd.sql;
+  renderTabs();
+  updateEditor();
+  renderResult();
+  if (nd.activeRes==='msg') switchRes('msg'); else switchRes('grid');
+  sqlEl.focus();
+}
+
+function closeDoc(id){
+  const i = docs.findIndex(d=>d.id===id);
+  if (i<0) return;
+  docs.splice(i,1);
+  if (activeId===id){
+    if (docs.length){ activeId = docs[Math.max(0,i-1)].id; const nd=currentDoc(); sqlEl.value=nd.sql; updateEditor(); renderResult(); }
+    else { doNew(''); }
+  }
+  renderTabs();
+}
+
+function doNew(sql, title){
+  const d = newDoc(sql!==undefined?sql:'', title);
+  activeId = d.id;
+  sqlEl.value = d.sql;
+  renderTabs(); updateEditor(); renderResult(); switchRes('grid');
+  sqlEl.focus();
+  document.getElementById('sbStatus').textContent = '新建查询窗口';
+}
+
+/* ============================================================
+   7. SQL 语法高亮
+   ============================================================ */
+const KEYWORDS = ('SELECT FROM WHERE AND OR NOT NULL INSERT INTO VALUES UPDATE SET DELETE CREATE TABLE ALTER DROP INDEX VIEW '+
+'JOIN LEFT RIGHT INNER OUTER FULL ON AS GROUP BY ORDER HAVING DISTINCT TOP UNION ALL EXISTS IN BETWEEN LIKE IS '+
+'CASE WHEN THEN ELSE END BEGIN COMMIT ROLLBACK TRANSACTION USE GO PRIMARY KEY FOREIGN REFERENCES DEFAULT IDENTITY '+
+'INT BIGINT SMALLINT TINYINT DECIMAL NUMERIC FLOAT REAL CHAR VARCHAR NVARCHAR NCHAR TEXT DATETIME DATE TIME BIT '+
+'COUNT SUM AVG MIN MAX ASC DESC WITH OVER PARTITION ROW_NUMBER RANK DENSE_RANK EXEC EXECUTE PROCEDURE FUNCTION '+
+'RETURN RETURNS DECLARE CURSOR FETCH NEXT INTO WHILE IF EXISTS PRINT RAISERROR TRY CATCH THROW GRANT REVOKE DENY '+
+'TRUNCATE MERGE OUTPUT PIVOT UNPIVOT CONVERT CAST COALESCE ISNULL NULLIF IIF').split(/\s+/);
+const KW = new Set(KEYWORDS);
+const FUNCS = new Set('COUNT SUM AVG MIN MAX GETDATE SYSDATE NOW UPPER LOWER LEN LENGTH SUBSTRING REPLACE ROUND ABS CAST CONVERT COALESCE ISNULL NULLIF IIF ROW_NUMBER RANK DENSE_RANK DATEADD DATEDIFF YEAR MONTH DAY'.split(/\s+/));
+
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function highlight(code){
+  let out = '';
+  let i = 0;
+  const n = code.length;
+  while (i < n){
+    const c = code[i], c2 = code.substr(i,2);
+    // 注释 --
+    if (c2 === '--'){
+      let j = code.indexOf('\n', i);
+      if (j === -1) j = n;
+      out += '<span class="tok-cmt">'+escapeHtml(code.slice(i,j))+'</span>';
+      i = j; continue;
+    }
+    // 块注释
+    if (c2 === '/*'){
+      let j = code.indexOf('*/', i+2);
+      j = (j===-1)? n : j+2;
+      out += '<span class="tok-cmt">'+escapeHtml(code.slice(i,j))+'</span>';
+      i = j; continue;
+    }
+    // 字符串
+    if (c === "'"){
+      let j = i+1;
+      while (j < n){ if (code[j]==="'"){ if (code[j+1]==="'"){ j+=2; continue; } j++; break; } j++; }
+      out += '<span class="tok-str">'+escapeHtml(code.slice(i,j))+'</span>';
+      i = j; continue;
+    }
+    // 方括号标识符
+    if (c === '['){
+      let j = code.indexOf(']', i);
+      j = (j===-1)? n : j+1;
+      out += '<span class="tok-fn">'+escapeHtml(code.slice(i,j))+'</span>';
+      i = j; continue;
+    }
+    // 变量
+    if (c === '@'){
+      let j = i+1;
+      while (j<n && /[A-Za-z0-9_@]/.test(code[j])) j++;
+      out += '<span class="tok-var">'+escapeHtml(code.slice(i,j))+'</span>';
+      i = j; continue;
+    }
+    // 数字
+    if (/[0-9]/.test(c) && !/[A-Za-z_]/.test(code[i-1]||'')){
+      let j = i;
+      while (j<n && /[0-9.]/.test(code[j])) j++;
+      out += '<span class="tok-num">'+escapeHtml(code.slice(i,j))+'</span>';
+      i = j; continue;
+    }
+    // 标识符 / 关键字
+    if (/[A-Za-z_]/.test(c)){
+      let j = i;
+      while (j<n && /[A-Za-z0-9_]/.test(code[j])) j++;
+      const word = code.slice(i,j);
+      const up = word.toUpperCase();
+      if (KW.has(up)) out += '<span class="tok-kw">'+escapeHtml(word)+'</span>';
+      else if (FUNCS.has(up)) out += '<span class="tok-fn">'+escapeHtml(word)+'</span>';
+      else out += escapeHtml(word);
+      i = j; continue;
+    }
+    // 运算符
+    if ('=<>!+-*/%'.includes(c)){
+      out += '<span class="tok-op">'+escapeHtml(c)+'</span>'; i++; continue;
+    }
+    out += escapeHtml(c);
+    i++;
+  }
+  return out;
+}
+
+function updateEditor(){
+  const code = sqlEl.value;
+  hlEl.innerHTML = highlight(code) + '\n';
+  const lines = code.split('\n').length;
+  let g = '';
+  for (let k=1;k<=lines;k++) g += '<div class="ln">'+k+'</div>';
+  gutterEl.innerHTML = g;
+  sqlEl.style.height = 'auto';
+  sqlEl.style.height = Math.max(sqlEl.scrollHeight, codeScroll.clientHeight) + 'px';
+  updatePos();
+}
+sqlEl.addEventListener('input', ()=>{
+  const d = currentDoc(); if (d){ d.dirty = true; renderTabs(); }
+  updateEditor();
+});
+sqlEl.addEventListener('scroll', ()=>{ gutterEl.scrollTop = 0; });
+codeScroll.addEventListener('scroll', ()=>{ gutterEl.style.transform = 'translateY('+(-codeScroll.scrollTop)+'px)'; });
+sqlEl.addEventListener('click', updatePos);
+sqlEl.addEventListener('keyup', updatePos);
+function updatePos(){
+  const pos = sqlEl.selectionStart;
+  const before = sqlEl.value.slice(0,pos);
+  const line = before.split('\n').length;
+  const col = pos - before.lastIndexOf('\n');
+  document.getElementById('sbPos').textContent = '行 '+line+', 列 '+col;
+  const lines = gutterEl.children;
+  for (let k=0;k<lines.length;k++) lines[k].classList.toggle('cur', k===line-1);
+}
+
+/* Tab 缩进 */
+sqlEl.addEventListener('keydown',(e)=>{
+  if (e.key==='Tab'){
+    e.preventDefault();
+    const s = sqlEl.selectionStart, en = sqlEl.selectionEnd;
+    sqlEl.setRangeText('    ', s, en, 'end');
+    const d = currentDoc(); if (d){ d.dirty = true; renderTabs(); }
+    updateEditor();
+  }
+  if (e.key==='F5'){ e.preventDefault(); execute(); }
+  if (e.ctrlKey && e.key==='F5'){ e.preventDefault(); parseOnly(); }
+});
+
+/* ============================================================
+   8. 结果渲染
+   ============================================================ */
+let sortState = {col:-1, dir:1};
+
+function switchRes(which){
+  const d = currentDoc(); if (d) d.activeRes = which;
+  document.querySelectorAll('.res-tab').forEach(t=>t.classList.toggle('active', t.dataset.res===which));
+  renderResult();
+}
+document.querySelectorAll('.res-tab').forEach(t=>t.addEventListener('click',()=>switchRes(t.dataset.res)));
+
+function renderResult(){
+  const d = currentDoc();
+  resBody.innerHTML = '';
+  if (!d) return;
+  if (d.activeRes === 'msg'){
+    rowCntEl.style.display='none';
+    const m = d.message || '<span class="dim">尚无消息。执行查询 (F5) 后将在此显示执行信息。</span>';
+    resBody.innerHTML = '<div class="messages">'+m+'</div>';
+    return;
+  }
+  if (!d.result){
+    rowCntEl.style.display='none';
+    resBody.innerHTML =
+      '<div class="empty-state">'+
+      '<svg viewBox="0 0 16 16" style="width:42px;height:42px"><rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1"/><path d="M2 6h12M6 6v7M10 6v7" stroke="currentColor" stroke-width="1"/></svg>'+
+      '<div>尚无查询结果</div><div style="font-size:11px">按 <b style="color:var(--accent)">F5</b> 或点击工具栏 ▶ 执行查询</div></div>';
+    return;
+  }
+  rowCntEl.style.display='';
+  const {cols, rows} = d.result;
+  rowCntEl.textContent = rows.length;
+
+  const tbl = document.createElement('table');
+  tbl.className = 'grid';
+  const thead = document.createElement('thead');
+  let htr = '<tr><th class="th-rowno"><div class="th-in">#</div></th>';
+  cols.forEach((c,ci)=>{
+    const sorted = sortState.col===ci ? (sortState.dir>0?'▲':'▼') : '';
+    htr += '<th data-col="'+ci+'"><div class="th-in">'+escapeHtml(c.name)
+        + '<span class="col-type">'+escapeHtml(c.type)+'</span>'
+        + '<span class="sort">'+sorted+'</span></div></th>';
+  });
+  htr += '</tr>';
+  thead.innerHTML = htr;
+  tbl.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  const ordered = rows.map((r,i)=>({r,i}));
+  if (sortState.col>=0){
+    const ci = sortState.col, dir = sortState.dir;
+    ordered.sort((a,b)=>{
+      let x=a.r[ci], y=b.r[ci];
+      if (x===y) return a.i-b.i;
+      if (x===null||x===undefined) return 1;
+      if (y===null||y===undefined) return -1;
+      const nx = typeof x==='number', ny = typeof y==='number';
+      if (nx&&ny) return (x-y)*dir;
+      return String(x).localeCompare(String(y))*dir;
+    });
+  }
+  ordered.forEach(({r})=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="rowno"></td>';
+    r.forEach(v=>{
+      const td = document.createElement('td');
+      if (v===null||v===undefined){ td.className='null'; td.textContent='NULL'; }
+      else if (typeof v==='number'){ td.className='num'; td.textContent = Number.isInteger(v)? v.toLocaleString() : v.toFixed(2); }
+      else { td.textContent = String(v); }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  // 序号列补值
+  Array.from(tbody.children).forEach((tr,idx)=>{ tr.firstChild.textContent = idx+1; });
+  tbl.appendChild(tbody);
+  resBody.appendChild(tbl);
+
+  // 表头排序
+  thead.querySelectorAll('th[data-col]').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const ci = +th.dataset.col;
+      if (sortState.col===ci) sortState.dir*=-1; else { sortState.col=ci; sortState.dir=1; }
+      renderResult();
+    });
+  });
+  // 行选中
+  tbody.addEventListener('click',(e)=>{
+    const tr = e.target.closest('tr'); if(!tr) return;
+    tbody.querySelectorAll('tr.selected').forEach(x=>x.classList.remove('selected'));
+    tr.classList.add('selected');
+  });
+}
+
+/* ============================================================
+   9. 模拟查询执行
+   ============================================================ */
+function detectTable(sql){
+  const m = sql.match(/\bfrom\s+((?:\[?dbo\]?\.)?\[?[A-Za-z_][A-Za-z0-9_]*\]?)/i);
+  if (m){
+    const raw = m[1].replace(/[\[\]]/g,'').split('.').pop();
+    if (TABLES[raw]) return raw;
+  }
+  return null;
+}
+function detectTop(sql){
+  const m = sql.match(/\btop\s*\(?\s*(\d+)/i);
+  return m ? parseInt(m[1],10) : null;
+}
+/* 聚合查询（COUNT/SUM/GROUP BY）走专用结果集，保证列与语句一致 */
+function isAggregate(sql){
+  return /\b(count|sum|avg|min|max)\s*\(/i.test(sql) && /\b(group\s+by|having)\b/i.test(sql);
+}
+function buildAggregateResult(top){
+  const cols = [
+    {name:'CompanyName', type:'nvarchar(80)'},
+    {name:'City',        type:'nvarchar(40)'},
+    {name:'Country',     type:'nvarchar(40)'},
+    {name:'OrderCount',  type:'int'},
+    {name:'TotalAmount', type:'decimal(12,2)'}
+  ];
+  let rows = TABLES.Customers.rows.map(c=>{
+    const cid = c[0];
+    const mine = TABLES.Orders.rows.filter(o=>o[1]===cid);
+    const total = mine.reduce((s,o)=>s+(o[5]||0),0);
+    return [c[1], c[3], c[4], mine.length, Number(total.toFixed(2))];
+  }).sort((a,b)=>b[4]-a[4]);
+  if (top) rows = rows.slice(0, top);
+  return {cols, rows};
+}
+
+function execute(){
+  const d = currentDoc(); if (!d) return;
+  d.sql = sqlEl.value;
+  const sql = d.sql;
+  document.getElementById('sbStatus').textContent = '正在执行…';
+
+  // 进度条动画
+  const bar = document.getElementById('progBar');
+  bar.style.width = '0%';
+  requestAnimationFrame(()=>{ bar.style.width='70%'; });
+
+  const t0 = performance.now();
+  setTimeout(()=>{
+    const t1 = performance.now();
+    bar.style.width='100%';
+    setTimeout(()=>{ bar.style.width='0%'; }, 220);
+
+    const elapsed = Math.max(1, Math.round(t1-t0));
+    const table = detectTable(sql);
+    const top = detectTop(sql);
+    const stripped = sql.replace(/--[^\n]*\n/g,'').replace(/\/\*[\s\S]*?\*\//g,'');
+    const isSelect = /\bselect\b/i.test(stripped);
+
+    if (isSelect && isAggregate(sql)){
+      const {cols, rows} = buildAggregateResult(top);
+      d.result = {cols, rows};
+      d.message =
+        '<span class="ok">✓ 命令已成功完成。</span>\n\n'
+        + '<b>(' + rows.length + ' 行受影响)</b>\n'
+        + '<span class="dim">已聚合 dbo.Customers ⋈ dbo.Orders  ·  用时 '+elapsed+' ms</span>';
+      document.getElementById('sbRows').textContent = rows.length+' 行';
+      document.getElementById('sbStatus').textContent = '查询已执行';
+      switchRes('grid');
+      toast('查询成功：返回 '+rows.length+' 行，用时 '+elapsed+' ms');
+    } else if (table && isSelect){
+      const t = TABLES[table];
+      const cols = t.columns.map(c=>({name:c.name, type:c.type}));
+      let rows = t.rows.map(r=>r.slice());
+      if (top) rows = rows.slice(0, top);
+      d.result = {cols, rows};
+      d.message =
+        '<span class="ok">✓ 命令已成功完成。</span>\n\n'
+        + '<b>(' + rows.length + ' 行受影响)</b>\n'
+        + '<span class="dim">表: dbo.'+table+'  ·  用时 '+elapsed+' ms  ·  扫描行数 '+t.rows.length+'</span>';
+      document.getElementById('sbRows').textContent = rows.length+' 行';
+      document.getElementById('sbStatus').textContent = '查询已执行';
+      switchRes('grid');
+      toast('查询成功：返回 '+rows.length+' 行，用时 '+elapsed+' ms');
+    } else if (isSelect && !table){
+      // 未知表：给一个聚合示例结果
+      const cols = [
+        {name:'CompanyName', type:'nvarchar(80)'},
+        {name:'City', type:'nvarchar(40)'},
+        {name:'Country', type:'nvarchar(40)'},
+        {name:'OrderCount', type:'int'},
+        {name:'TotalAmount', type:'decimal(12,2)'}
+      ];
+      const rows = TABLES.Customers.rows.map((c,i)=>[
+        c[1], c[3], c[4],
+        (i*3)%7 + 1,
+        Number((((i*7)%23+1) * 137.45).toFixed(2))
+      ]);
+      d.result = {cols, rows};
+      d.message = '<span class="ok">✓ 命令已成功完成。</span>\n\n<b>('+rows.length+' 行受影响)</b>\n<span class="dim">用时 '+elapsed+' ms</span>';
+      document.getElementById('sbRows').textContent = rows.length+' 行';
+      document.getElementById('sbStatus').textContent = '查询已执行';
+      switchRes('grid');
+      toast('查询成功：返回 '+rows.length+' 行');
+    } else {
+      d.result = null;
+      const lines = sql.split('\n').filter(l=>l.trim() && !l.trim().startsWith('--')).length;
+      d.message = '<span class="ok">✓ 命令已成功完成。</span>\n\n'
+        + '<span class="dim">解析语句 '+lines+' 条  ·  用时 '+elapsed+' ms  ·  受影响 0 行</span>';
+      document.getElementById('sbRows').textContent = '0 行';
+      document.getElementById('sbStatus').textContent = '命令已成功完成';
+      switchRes('msg');
+      toast('命令已成功完成');
+    }
+  }, 260 + Math.random()*220);
+}
+
+function parseOnly(){
+  const d = currentDoc(); if (!d) return;
+  d.sql = sqlEl.value;
+  const sql = d.sql;
+  const t0 = performance.now();
+  const elapsed = Math.max(1, Math.round(performance.now()-t0+ (Math.random()*40)));
+  const bad = /\bselectt\b|\bfromm\b|\bwheer\b/i.test(sql);
+  if (bad){
+    d.message = '<span class="err">✗ 消息 102，级别 15，状态 1，第 1 行</span>\n'
+      + '<span class="err">“selectt”附近有语法错误。</span>';
+    document.getElementById('sbStatus').textContent = '分析失败';
+    toast('语法分析失败');
+  } else {
+    d.message = '<span class="ok">✓ 已成功分析 SQL 语句，未发现语法错误。</span>\n'
+      + '<span class="dim">用时 '+elapsed+' ms</span>';
+    document.getElementById('sbStatus').textContent = '分析成功';
+    toast('语法分析通过');
+  }
+  switchRes('msg');
+}
+
+function openTableQuery(table, n, edit){
+  if (!TABLES[table]) return;
+  n = n || 1000;
+  const t = TABLES[table];
+  const cols = t.columns.map(c=>'       '+c.name).join(',\n');
+  const sql = (edit ? '-- 编辑前 '+n+' 行（模拟）\n' : '')
+    + 'SELECT TOP '+n+'\n'+cols+'\nFROM   dbo.'+table+';\n';
+  const d = newDoc(sql, table+'.sql');
+  activeId = d.id;
+  sqlEl.value = d.sql;
+  renderTabs(); updateEditor(); renderResult(); switchRes('grid');
+  sqlEl.focus();
+  document.getElementById('sbStatus').textContent = '已生成 '+table+' 查询';
+  toast('已打开 dbo.'+table+'（TOP '+n+'）');
+  setTimeout(execute, 120);
+}
+
+/* ============================================================
+   10. 菜单 / 工具栏动作
+   ============================================================ */
+document.querySelectorAll('.m-item').forEach(mi=>{
+  mi.addEventListener('click',(e)=>{
+    const wasOpen = mi.classList.contains('open');
+    document.querySelectorAll('.m-item').forEach(x=>x.classList.remove('open'));
+    if (!wasOpen) mi.classList.add('open');
+    e.stopPropagation();
+  });
+});
+document.addEventListener('click',()=>document.querySelectorAll('.m-item').forEach(x=>x.classList.remove('open')));
+document.querySelectorAll('.dropdown .d-item').forEach(di=>{
+  di.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    document.querySelectorAll('.m-item').forEach(x=>x.classList.remove('open'));
+    const a = di.dataset.action;
+    if (a) handleCtxAction(a);
+    else toast(di.textContent.replace(/\s+/g,' ').trim());
+  });
+});
+
+const ACTIONS = {
+  new: ()=>doNew(''),
+  open: ()=>toast('打开文件… (演示环境)'),
+  save: ()=>{ const d=currentDoc(); if(d){ d.dirty=false; renderTabs(); } toast('已保存 '+(currentDoc()||{}).title); },
+  execute,
+  parse: parseOnly,
+  cancel: ()=>{ document.getElementById('progBar').style.width='0%'; document.getElementById('sbStatus').textContent='查询已取消'; toast('已请求取消查询'); },
+  connect: ()=>openModal('连接到服务器', connectFormHtml()),
+  disconnect: ()=>toast('已断开与服务器的连接'),
+  refresh: ()=>{ spinRefresh(); toast('对象资源管理器已刷新'); },
+  collapse: ()=>{
+    treeEl.querySelectorAll('.children').forEach(u=>u.classList.add('collapsed'));
+    treeEl.querySelectorAll('.caret').forEach(c=>c.classList.remove('open'));
+    toast('已折叠全部节点');
+  },
+  theme: toggleTheme,
+  filter: ()=>toast('估计的执行计划：开销 100%（演示）'),
+  db: ()=>openModal('选择数据库', dbFormHtml()),
+  about: ()=>openModal('关于 SQL Server Management Studio', aboutHtml()),
+  options: ()=>openModal('选项', optionsHtml()),
+  'toggle-explorer': ()=>{
+    const ex = document.getElementById('explorer'), sp = document.getElementById('splitV');
+    const hidden = ex.style.display === 'none';
+    ex.style.display = hidden ? '' : 'none';
+    sp.style.display = hidden ? '' : 'none';
+  }
+};
+document.querySelectorAll('[data-action]').forEach(el=>{
+  if (el.closest('.dropdown')) return;
+  el.addEventListener('click',(e)=>{
+    const a = el.dataset.action;
+    if (ACTIONS[a]) { e.preventDefault(); ACTIONS[a](); }
+  });
+});
+
+function spinRefresh(){
+  const btns = document.querySelectorAll('[data-action="refresh"] svg');
+  btns.forEach(b=>{ b.style.transition='transform .6s'; b.style.transform='rotate(360deg)'; setTimeout(()=>{b.style.transition='';b.style.transform='';},620); });
+}
+
+/* ============================================================
+   11. 主题
+   ============================================================ */
+function toggleTheme(){
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme')==='dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  toast('已切换到'+(next==='dark'?'深色':'浅色（SSMS 经典）')+'主题');
+}
+
+/* ============================================================
+   12. 对话框
+   ============================================================ */
+const mask = document.getElementById('modalMask');
+const modalTitle = document.getElementById('modalTitle');
+const modalBody  = document.getElementById('modalBody');
+let modalOkCb = null;
+
+function openModal(title, html, okCb){
+  modalTitle.textContent = title;
+  modalBody.innerHTML = html;
+  modalOkCb = okCb || null;
+  mask.classList.add('show');
+}
+document.getElementById('modalCancel').addEventListener('click',()=>mask.classList.remove('show'));
+document.getElementById('modalOk').addEventListener('click',()=>{
+  if (modalOkCb) modalOkCb();
+  mask.classList.remove('show');
+});
+mask.addEventListener('click',(e)=>{ if(e.target===mask) mask.classList.remove('show'); });
+
+function connectFormHtml(){
+  return '<div class="m-row"><label>服务器类型</label><select><option>数据库引擎</option><option>Analysis Services</option><option>Integration Services</option></select></div>'
+    +'<div class="m-row"><label>服务器名称</label><input value="DESKTOP-SQL01"></div>'
+    +'<div class="m-row"><label>身份验证</label><select><option>SQL Server 身份验证</option><option>Windows 身份验证</option></select></div>'
+    +'<div class="m-row"><label>登录名</label><input value="sa"></div>'
+    +'<div class="m-row"><label>密码</label><input type="password" value="············"></div>'
+    +'<div class="m-row"><label>加密</label><select><option>强制加密</option><option>可选</option></select></div>';
+}
+function dbFormHtml(){
+  return '<div class="m-row"><label>数据库名称</label><input value="NewDatabase" id="newDbName"></div>'
+    +'<div class="m-row"><label>初始大小</label><input value="8 MB"></div>'
+    +'<div class="m-row"><label>恢复模式</label><select><option>简单</option><option>完整</option><option>大容量日志</option></select></div>'
+    +'<div class="m-row"><label>排序规则</label><select><option>Chinese_PRC_CI_AS</option><option>SQL_Latin1_General_CP1_CI_AS</option></select></div>';
+}
+function aboutHtml(){
+  return '<div style="display:flex;gap:14px;align-items:flex-start">'
+    +'<svg viewBox="0 0 32 32" style="width:44px;height:44px;flex:0 0 44px"><ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#D96A6D"/><path d="M5 8v16c0 2.3 4.9 4.2 11 4.2s11-1.9 11-4.2V8" fill="#B84B4E"/><ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#D96A6D"/><ellipse cx="16" cy="7" rx="7" ry="2.5" fill="#F2B7B8"/></svg>'
+    +'<div><b>SQL Server Management Studio</b><br><span style="opacity:.75">版本 17.0.1000.7（演示界面）</span><br><br>'
+    +'一个用于访问、配置、管理和开发 SQL Server 的集成环境。<br>本页面为参照 SSMS 样式构建的前端演示。</div></div>';
+}
+function optionsHtml(){
+  return '<div class="m-row"><label>环境</label><select><option>常规</option><option>文本编辑器</option><option>查询执行</option><option>设计器</option></select></div>'
+    +'<div class="m-row"><label>字体</label><select><option>Cascadia Mono, 10pt</option><option>Consolas, 10pt</option></select></div>'
+    +'<div class="m-row"><label>主题颜色</label><select id="optTheme"><option value="dark">深色</option><option value="light">浅色</option></select></div>'
+    +'<div class="m-row"><label>行号</label><select><option>已启用</option><option>已禁用</option></select></div>';
+}
+
+/* ============================================================
+   13. Toast
+   ============================================================ */
+let toastTimer = null;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   14. 分隔条拖拽
+   ============================================================ */
+const splitV = document.getElementById('splitV');
+const splitH = document.getElementById('splitH');
+const explorerEl = document.getElementById('explorer');
+const resultsEl  = document.getElementById('results');
+const editorHost = document.getElementById('editorHost');
+
+let dragging = null;
+splitV.addEventListener('mousedown',(e)=>{ dragging='v'; document.body.classList.add('resizing-v'); e.preventDefault(); });
+splitH.addEventListener('mousedown',(e)=>{ dragging='h'; document.body.classList.add('resizing-h'); e.preventDefault(); });
+document.addEventListener('mousemove',(e)=>{
+  if (!dragging) return;
+  if (dragging==='v'){
+    const left = document.getElementById('main').getBoundingClientRect().left;
+    let w = e.clientX - left;
+    w = Math.max(180, Math.min(640, w));
+    explorerEl.style.flexBasis = w+'px';
+    explorerEl.style.width = w+'px';
+  } else {
+    const host = editorHost.getBoundingClientRect();
+    let h = host.bottom - e.clientY;
+    h = Math.max(70, Math.min(host.height-80, h));
+    resultsEl.style.flexBasis = h+'px';
+  }
+});
+document.addEventListener('mouseup',()=>{ dragging=null; document.body.classList.remove('resizing-v','resizing-h'); });
+window.addEventListener('resize', ()=>{ updateEditor(); });
+
+/* ============================================================
+   15. 快捷键
+   ============================================================ */
+document.addEventListener('keydown',(e)=>{
+  if (e.ctrlKey && e.key.toLowerCase()==='n'){ e.preventDefault(); doNew(''); }
+  if (e.ctrlKey && e.key.toLowerCase()==='s'){ e.preventDefault(); ACTIONS.save(); }
+  if (e.key==='F8'){ e.preventDefault(); ACTIONS['toggle-explorer'](); }
+  if (e.key==='Escape'){ mask.classList.remove('show'); hideCtx(); }
+});
+
+/* ============================================================
+   16. 启动
+   ============================================================ */
+renderTree();
+doNew(STARTER_SQL, 'SQLQuery1.sql');
+document.getElementById('sbStatus').textContent = '就绪';
+setTimeout(execute, 400);
+setTimeout(()=>{ toast('提示：双击左侧表名可快速生成查询，按 F5 执行'); }, 1100);
+</script>
+</body>
+</html>
