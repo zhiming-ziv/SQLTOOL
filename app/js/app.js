@@ -182,12 +182,13 @@
     return c;
   }
 
-  async function refreshConnSchema(c) {
-    c.schema = await c.engine.schema();
+  async function refreshConnSchema(c, database) {
+    const schema = await c.engine.schema(database);
     c.attached = await c.engine.attached();
     if (!c.schemas) c.schemas = {};
-    const key = (c.schema && c.schema.database) || 'main';
-    c.schemas[key] = c.schema;
+    const key = (schema && schema.database) || 'main';
+    c.schemas[key] = schema;
+    if (!database || c.engineKind !== 'remote' || c.engine.currentDatabase === database) c.schema = schema;
   }
 
   async function persistConn(c) {
@@ -798,7 +799,7 @@
       case 'script-select': insertQuery(selectTopSql(d.name, 100)); break;
       case 'script-create': showDdl(d._table && d._table.ddl || '-- 无 DDL', d.name + ' — CREATE 脚本', true); break;
       case 'script-insert': await scriptInsert(d.name, db); break;
-      case 'export-db': await exportDb(); break;
+      case 'export-db': await exportDb(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
       case 'run-script': pickFile('.sql,.txt', f => runScriptFile(f)); break;
       case 'import-csv-table': pickFile('.csv,.txt', f => importCsvToTable(f, d.name, db)); break;
       case 'export-csv-table': await exportTableCsv(d.name, db); break;
@@ -1359,13 +1360,25 @@
     return (c && c.engineKind === 'remote' && c.engine.currentDatabase) ? c.engine.currentDatabase : undefined;
   }
 
+  // 异步操作始终携带发起时的连接、引擎和数据库，不再跟随界面切换。
+  function queryContext(c, database) {
+    return c && c.engine ? { connection: c, engine: c.engine, connId: c.id,
+      database: database === undefined ? (currentDbArg(c) || null) : database } : null;
+  }
+  function contextOpen(context) {
+    return !!context && state.conns.includes(context.connection) && context.connection.engine === context.engine;
+  }
+  function contextActive(context) {
+    return contextOpen(context) && context.connId === state.activeConnId &&
+      (context.connection.engineKind !== 'remote' || context.database === (currentDbArg(context.connection) || null));
+  }
+
   async function execSql(sql, opts) {
-    const e = eng();
-    if (!e) { toast('请先建立并选择一个连接', true); return null; }
+    const context = (opts && opts.context) || queryContext(conn(), opts && opts.database);
+    if (!contextOpen(context)) return { error: '连接已关闭或不可用', ms: 0 };
     const t0 = performance.now();
     try {
-      const dbArg = (opts && opts.database) || currentDbArg(conn());
-      const r = await e.exec(sql, dbArg);
+      const r = await context.engine.exec(sql, context.database);
       r.ms = Math.round(performance.now() - t0);
       return r;
     } catch (err) {
@@ -1391,23 +1404,41 @@
     return { sql: full.trim(), selection: false, lines: full.split('\n').length };
   }
 
-  async function runQuery() {
-    const d = doc();
+  async function runQuery(opts) {
+    opts = opts || {};
+    const d = opts.document || doc();
     if (!d) { toast('没有活动的查询窗口', true); return; }
-    if (!eng()) { toast('请先在左侧选择一个连接', true); return; }
-    d.sql = sqlEl.value;                 // 文档内容始终是整篇
-    const cur = currentSql();
+    const context = opts.context || queryContext(conn());
+    if (!contextOpen(context) || !state.docs.includes(d)) { toast('连接或查询窗口已关闭', true); return; }
+    if (!opts.document) d.sql = sqlEl.value; // 文档内容始终是整篇
+    const cur = opts.sql === undefined ? currentSql() : { sql: opts.sql, selection: false };
     const sql = cur.sql;                 // 实际执行的是选区或整篇
     if (!sql) { toast('请输入 SQL 语句', true); return; }
+    const version = d.queryVersion = (d.queryVersion || 0) + 1;
+    const pe = cur.selection ? null : (opts.pendingEdit || d.pendingEdit);
+    if (!cur.selection) d.pendingEdit = null;
+    d.queryRunning = true;
+    const visible = () => doc() === d && contextActive(context);
+    if (doc() === d) renderResult();
 
     const bar = $('#progBar');
-    bar.style.width = '0%';
-    requestAnimationFrame(() => { bar.style.width = '60%'; });
-    status(cur.selection ? '正在执行选中部分…' : '正在执行…');
+    if (visible()) {
+      bar.style.width = '0%';
+      requestAnimationFrame(() => { if (visible() && d.queryVersion === version && d.queryRunning) bar.style.width = '60%'; });
+      status(cur.selection ? '正在执行选中部分…' : '正在执行…');
+    }
 
-    const r = await execSql(sql);
-    bar.style.width = '100%';
-    setTimeout(() => { bar.style.width = '0%'; }, 200);
+    let r = await execSql(sql, { context });
+    if (!state.docs.includes(d) || d.queryVersion !== version) return;
+    d.queryRunning = false;
+    if (!contextOpen(context)) r = { error: '查询所属连接已关闭' };
+    d.connId = context.connId;
+    d.resultContext = context;
+    d.resultSql = sql;
+    if (visible()) {
+      bar.style.width = '100%';
+      setTimeout(() => { if (visible() && d.queryVersion === version) bar.style.width = '0%'; }, 200);
+    }
 
     if (!r || r.error) {
       d.result = null;
@@ -1415,9 +1446,8 @@
         (cur.selection ? '\n<span class="dim">（只执行了选中的 ' + cur.lines + ' 行）</span>' : '') +
         '\n\n<span class="err">' + esc((r && r.error) || '未知错误') + '</span>';
       d.activeRes = 'msg';
-      renderResult();
-      status('执行失败');
-      toast('SQL 执行失败', true);
+      if (doc() === d) renderResult();
+      if (visible()) { status('执行失败'); toast('SQL 执行失败', true); }
       return;
     }
 
@@ -1425,14 +1455,11 @@
     if (sets.length) {
       const set = sets[sets.length - 1];
       d.result = { columns: set.columns, values: set.values };
-      d.connId = state.activeConnId;   // 结果与产生它的连接绑定
       d.editTable = null; d.editCols = null; d.rowKeys = null; d.editKeyType = null;
-      d.editNote = ''; d.editKeyCols = null;
-      // 只跑选区时不要消费 pendingEdit —— 那是「双击表打开」的流程，与选区无关
-      const pe = cur.selection ? null : d.pendingEdit;
+      d.editNote = ''; d.editKeyCols = null; d.editDb = context.database;
       if (pe && pe.rowid && set.columns[0] === '__rid') {
         // SQLite：用隐藏的 rowid 列精确定位行
-        d.editTable = pe.table; d.editDb = pe.database; d.editKeyType = 'rowid';
+        d.editTable = pe.table; d.editKeyType = 'rowid';
         d.rowKeys = set.values.map(v => ({ rowid: v[0] }));
         d.result = { columns: set.columns.slice(1), values: set.values.map(v => v.slice(1)) };
         d.editCols = d.result.columns;
@@ -1440,7 +1467,7 @@
         // 远程库：用主键列定位行
         const idx = pe.pkCols.map(c => set.columns.indexOf(c));
         if (idx.every(i => i >= 0)) {
-          d.editTable = pe.table; d.editDb = pe.database; d.editKeyType = 'pk';
+          d.editTable = pe.table; d.editKeyType = 'pk';
           d.editKeyCols = pe.pkCols;
           d.rowKeys = set.values.map(v => {
             const k = {};
@@ -1454,7 +1481,7 @@
         // 无主键表：按全部列的原值定位行（SSMS 对无主键表也是这么做的）
         const idx = pe.allCols.map(c => set.columns.indexOf(c));
         if (idx.every(i => i >= 0)) {
-          d.editTable = pe.table; d.editDb = pe.database; d.editKeyType = 'cols';
+          d.editTable = pe.table; d.editKeyType = 'cols';
           d.editKeyCols = pe.allCols.slice();
           d.rowKeys = set.values.map(v => {
             const k = {};
@@ -1465,7 +1492,6 @@
           d.editNote = '无主键，按全部列原值匹配';
         }
       }
-      d.pendingEdit = null;
       d.message =
         '<span class="ok">✓ 查询成功</span>' +
         (cur.selection ? '\n<span class="dim">（只执行了选中的 ' + cur.lines + ' 行，其余未执行）</span>' : '') +
@@ -1473,7 +1499,7 @@
         '<b>(' + d.result.values.length + ' 行返回)</b>\n' +
         '<span class="dim">结果集 ' + sets.length + ' 个  ·  用时 ' + r.ms + ' ms</span>';
       d.activeRes = 'grid';
-      status(cur.selection ? '查询成功（选区）' : '查询成功');
+      if (visible()) status(cur.selection ? '查询成功（选区）' : '查询成功');
     } else {
       d.result = null;
       d.message =
@@ -1483,22 +1509,31 @@
         '<b>(' + (r.rowsAffected || 0) + ' 行受影响)</b>\n' +
         '<span class="dim">用时 ' + r.ms + ' ms</span>';
       d.activeRes = 'msg';
-      status(cur.selection ? '命令已成功完成（选区）' : '命令已成功完成');
-      // 结构可能变化
-      await doRefresh(true);
+      if (visible()) status(cur.selection ? '命令已成功完成（选区）' : '命令已成功完成');
+      // 结构变化只刷新产生它的连接，不刷新用户后来选中的连接。
+      try { await refreshConnSchema(context.connection, context.database); } catch (e) { /* 刷新失败不影响执行结果 */ }
+      renderTree(); updateStatus();
     }
-    renderResult();
+    if (doc() === d) renderResult();
   }
 
   async function explainQuery() {
     const d = doc();
-    if (!d || !eng()) return;
+    const context = queryContext(conn());
+    if (!d || !contextOpen(context)) return;
     d.sql = sqlEl.value;
-    const isDuck = conn().engineKind === 'duckdb';
+    const isDuck = context.connection.engineKind === 'duckdb';
     const cur = currentSql();
     if (!cur.sql) { toast('请输入 SQL 语句', true); return; }
     const sql = (isDuck ? 'EXPLAIN ' : 'EXPLAIN QUERY PLAN ') + cur.sql;
-    const r = await execSql(sql);
+    const version = d.queryVersion = (d.queryVersion || 0) + 1;
+    d.queryRunning = true;
+    renderResult();
+    let r = await execSql(sql, { context });
+    if (!state.docs.includes(d) || d.queryVersion !== version) return;
+    d.queryRunning = false;
+    if (!contextOpen(context)) r = { error: '查询所属连接已关闭' };
+    d.connId = context.connId; d.resultContext = context;
     if (!r || r.error) {
       d.result = null;
       d.message = '<span class="err">✗ 无法生成执行计划</span>\n\n<span class="err">' + esc((r && r.error) || '') + '</span>';
@@ -1512,8 +1547,8 @@
     }
     d.activeRes = 'grid';
     d.editTable = null; d.editCols = null; d.rowids = null;
-    renderResult();
-    status('执行计划');
+    if (doc() === d) renderResult();
+    if (doc() === d && contextActive(context)) status('执行计划');
   }
 
   async function openTableQuery(name, opts) {
@@ -1522,6 +1557,7 @@
     if (!c) { toast('请先选择一个连接', true); return; }
     const isView = !!opts.isView;
     const db = opts.database || (c.engineKind === 'remote' ? c.engine.currentDatabase : null);
+    const context = queryContext(c, db);
     // 跨库打开表时把连接的当前库切过去，让工具栏、树高亮、执行库三者保持一致
     if (c.engineKind === 'remote' && db && c.engine.currentDatabase !== db) {
       c.engine.setDatabase(db);
@@ -1537,6 +1573,7 @@
       try { cols = await c.engine.columns(db, name); if (tbl) tbl.columns = cols; }
       catch (e) { cols = null; }
     }
+    if (!contextOpen(context)) { toast('连接已关闭', true); return; }
 
     const useRowid = !isView && c.engineKind === 'sqlite' && tbl && tbl.hasRowid !== false;
     const head = dialect === 'mssql' ? 'SELECT TOP 1000 ' : 'SELECT ';
@@ -1555,7 +1592,7 @@
     d.pendingEdit = {
       table: name, database: db, rowid: useRowid, pkCols, allCols
     };
-    setTimeout(runQuery, 60);
+    await runQuery({ document: d, context, sql });
   }
 
   function dialectOf(c) {
@@ -1565,8 +1602,7 @@
     return 'sqlite';
   }
 
-  function findTable(name, db) {
-    const c = conn();
+  function findTable(name, db, c = conn()) {
     if (!c) return null;
     if (db && c.schemas && c.schemas[db]) {
       const t = (c.schemas[db].tables || []).find(x => x.name === name);
@@ -1623,13 +1659,14 @@
       return;
     }
     // 结果来自另一个连接时给出明确提示，避免误读
-    if (d.connId && d.connId !== state.activeConnId) {
+    if (d.resultContext && !contextActive(d.resultContext)) {
       $('#rowCnt').style.display = 'none';
       updateRowActions(null);
       const other = state.conns.find(x => x.id === d.connId);
       const cur = conn();
       body.innerHTML = '<div class="empty-state">' + bigGridIcon() +
-        '<div>该结果来自连接「' + esc(other ? other.name : '已关闭的连接') + '」</div>' +
+        '<div>该结果来自连接「' + esc(other ? other.name : '已关闭的连接') + '」' +
+        (d.resultContext.database ? '，数据库「' + esc(d.resultContext.database) + '」' : '') + '</div>' +
         '<div style="font-size:11px">当前连接为「' + esc(cur ? cur.name : '未连接') +
         '」，按 <span class="k">F5</span> 在目标连接上重新执行</div></div>';
       return;
@@ -1687,7 +1724,7 @@
         else { td.textContent = String(val); }
         // 只要是「从表打开」的结果集就可编辑；列元信息（PK/类型）缺失不影响编辑，
         // 否则 schema 缓存一旦丢失，整张表就变成不可编辑且没有任何提示。
-        if (d.editTable && !d.isView) {
+        if (d.editTable && !d.isView && !d.queryRunning) {
           td.classList.add('editable');
           td.title = '双击编辑（右键可新增/删除行）';
         }
@@ -1721,7 +1758,7 @@
       }
       lastTr = tr;
     });
-    if (d.editTable && !d.isView) {
+    if (d.editTable && !d.isView && !d.queryRunning) {
       tbody.addEventListener('dblclick', e => {
         const td = e.target.closest('td.editable');
         if (td) startEdit(td, d, cols[+td.dataset.col], +td.dataset.row);
@@ -1771,8 +1808,27 @@
     return { where: parts.join(' AND '), params };
   }
 
+  // 写操作保存结果快照，确认框/输入框等待期间不得借用其他文档或连接。
+  function editTarget(d) {
+    if (!d || !d.result || !d.editTable || d.isView || d.queryRunning ||
+        !state.docs.includes(d) || !contextActive(d.resultContext)) {
+      toast('请切回结果所属连接和数据库，并等待查询完成后再编辑', true);
+      return null;
+    }
+    return { document: d, result: d.result, version: d.queryVersion, context: d.resultContext,
+      data: Object.assign({}, d, { rowKeys: (d.rowKeys || []).map(key => Object.assign({}, key)) }) };
+  }
+  function editTargetCurrent(target) {
+    const d = target.document;
+    return state.docs.includes(d) && contextOpen(target.context) && !d.queryRunning &&
+      d.queryVersion === target.version && d.result === target.result;
+  }
+
   function startEdit(td, d, colName, rowIdx) {
     if (td.querySelector('input')) return;
+    const target = editTarget(d);
+    if (!target) return;
+    d = target.data;
     const old = td.classList.contains('null') ? null : td.textContent;
     td.classList.add('editing');
     const inp = document.createElement('input');
@@ -1789,16 +1845,15 @@
       const nv = inp.value;
       td.classList.remove('editing');
       if (!commit || nv === (old === null ? '' : String(old))) { renderResult(); return; }
-      const c = conn();
-      if (!c) { toast('连接已失效', true); return; }
+      if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭，请重新打开表后编辑', true); renderResult(); return; }
+      const c = target.context.connection;
       const q = n => S.quoteIdentFor(n, dialectOf(c));
-      const e = eng();
-      if (!e) { toast('连接已失效', true); return; }
+      const e = target.context.engine;
       const val = nv === '' ? null : nv;
       try {
         const w = rowWhere(d, rowIdx, q);
         const sql = 'UPDATE ' + q(d.editTable) + ' SET ' + q(colName) + ' = ? WHERE ' + w.where;
-        const res = await e.run(sql, [val].concat(w.params), d.editDb || currentDbArg(c) || null);
+        const res = await e.run(sql, [val].concat(w.params), target.context.database);
         // 0 行受影响：行定位条件没匹配到任何行（行已被删除 / 改动，或按全部列原值匹配时
         // BLOB、日期精度、浮点数等原值无法精确比较）。此时不能假装成功改掉本地单元格。
         if (!res || !(res.rowsAffected > 0)) {
@@ -1806,18 +1861,18 @@
           renderResult();
           return;
         }
-        const cur = doc();
-        if (cur && cur.result) {
+        const cur = target.document;
+        if (editTargetCurrent(target)) {
           const ci = cur.result.columns.indexOf(colName);
           if (ci >= 0) cur.result.values[rowIdx][ci] = val;
         }
         if (d.editKeyType === 'cols' && res && res.rowsAffected > 1) {
           toast('已更新 ' + res.rowsAffected + ' 行：该表无主键，存在完全重复的行，全部被一并修改', true);
-          await reloadTableData(d);
+          await reloadTableData(target);
         } else {
           toast('已更新 ' + d.editTable + '.' + colName);
         }
-        await persistConn(c);
+        if (contextOpen(target.context)) await persistConn(c);
         renderResult();
       } catch (err) {
         toast('更新失败：' + (err && err.message ? err.message : err), true);
@@ -1835,20 +1890,21 @@
    * 增 / 删：结果网格的写操作
    * -------------------------------------------------------- */
   /** 重新执行打开这张表时用的查询，刷新网格与行定位信息 */
-  async function reloadTableData(d) {
-    if (!d || !d.editTable) return;
-    d.pendingEdit = {
+  async function reloadTableData(target) {
+    if (!editTargetCurrent(target)) return;
+    const d = target.data;
+    const pendingEdit = {
       table: d.editTable, database: d.editDb,
       rowid: d.editKeyType === 'rowid',
       pkCols: d.editKeyType === 'pk' ? (d.editKeyCols || []) : [],
       allCols: d.editKeyType === 'cols' ? (d.editKeyCols || []) : []
     };
-    await runQuery();
+    await runQuery({ document: target.document, context: target.context, sql: d.resultSql, pendingEdit });
   }
 
   /** 取出表结构（列定义），用于新增行表单 */
   async function tableColumnsFor(d, c) {
-    const tbl = findTable(d.editTable, d.editDb);
+    const tbl = findTable(d.editTable, d.editDb, c);
     let cols = (tbl && tbl.columns) || [];
     if (!cols.length && c.engine.columns) {
       try { cols = await c.engine.columns(d.editDb || null, d.editTable); if (tbl) tbl.columns = cols; }
@@ -1859,14 +1915,14 @@
 
   /** 新增一行：按列生成表单 → 参数化 INSERT */
   async function addRowDialog() {
-    const d = doc();
-    const c = conn();
-    if (!d || !d.editTable || !c) { toast('请先双击一张表打开数据', true); return; }
-    if (d.isView) { toast('视图不能直接插入数据', true); return; }
+    const target = editTarget(doc());
+    if (!target) return;
+    const d = target.data, c = target.context.connection;
     const cols = await tableColumnsFor(d, c);
+    if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭', true); return; }
     if (!cols.length) { toast('无法获取表结构，不能新增行', true); return; }
     const q = n => S.quoteIdentFor(n, dialectOf(c));
-    const ddl = (findTable(d.editTable, d.editDb) || {}).ddl || '';
+    const ddl = (findTable(d.editTable, d.editDb, c) || {}).ddl || '';
 
     const rows = cols.map(col => {
       const auto = col.auto === true ||
@@ -1894,6 +1950,7 @@
       '</div>',
       '<button class="btn primary" data-ok>插入</button><button class="btn" data-cancel>取消</button>',
       async (mm) => {
+        if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭，请重新打开新增窗口', true); return false; }
         const names = [], ph = [], params = [];
         let bad = null;
         mm.querySelectorAll('.add-row').forEach(r => {
@@ -1914,10 +1971,11 @@
         try {
           const sql = 'INSERT INTO ' + q(d.editTable) +
             ' (' + names.map(q).join(', ') + ') VALUES (' + ph.join(', ') + ')';
-          const r = await eng().run(sql, params, d.editDb || currentDbArg(c) || null);
+          const r = await target.context.engine.run(sql, params, target.context.database);
           toast('已插入 ' + ((r && r.rowsAffected) || 1) + ' 行');
           busy(false);
-          await reloadTableData(d);
+          if (contextOpen(target.context)) await persistConn(c);
+          await reloadTableData(target);
           return false;                        // 关闭对话框
         } catch (e) {
           busy(false);
@@ -1931,9 +1989,9 @@
 
   /** 删除结果网格中选中的行 */
   async function deleteSelectedRows() {
-    const d = doc();
-    const c = conn();
-    if (!d || !d.editTable || !c) { toast('请先双击一张表打开数据', true); return; }
+    const target = editTarget(doc());
+    if (!target) return;
+    const d = target.data, c = target.context.connection;
     const tbody = document.querySelector('#resBody table.grid tbody');
     if (!tbody) { toast('没有可删除的数据', true); return; }
     const trs = Array.from(tbody.querySelectorAll('tr.selected'));
@@ -1949,16 +2007,18 @@
     await confirmThen('删除行',
       '将从 <b>' + esc(d.editTable) + '</b> 删除 <b>' + idxs.length + '</b> 行，该操作不可撤销。' + extra,
       async () => {
+        if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭，请重新选择要删除的行', true); return; }
         let n = 0;
         for (const i of idxs) {
+          if (!contextOpen(target.context)) { toast('连接已关闭，已停止删除', true); return; }
           const w = rowWhere(d, i, q);
-          const r = await eng().run('DELETE FROM ' + q(d.editTable) + ' WHERE ' + w.where,
-            w.params, d.editDb || currentDbArg(c) || null);
+          const r = await target.context.engine.run('DELETE FROM ' + q(d.editTable) + ' WHERE ' + w.where,
+            w.params, target.context.database);
           n += (r && r.rowsAffected) || 0;
         }
         toast('已删除 ' + n + ' 行');
-        await persistConn(c);
-        await reloadTableData(d);
+        if (contextOpen(target.context)) await persistConn(c);
+        await reloadTableData(target);
       }, true);
   }
 
@@ -1966,7 +2026,7 @@
   function updateRowActions(d) {
     const add = $('#btnRowAdd'), del = $('#btnRowDel'), hint = $('#editHint');
     if (!add || !del || !hint) return;
-    const editable = !!(d && d.editTable && d.result && !d.isView);
+    const editable = !!(d && d.editTable && d.result && !d.isView && !d.queryRunning && contextActive(d.resultContext));
     add.style.display = editable ? '' : 'none';
     del.style.display = editable ? '' : 'none';
     if (!editable) { hint.style.display = 'none'; hint.textContent = ''; return; }
@@ -2056,9 +2116,8 @@
     });
   }
 
-  async function exportDb() {
-    const c = conn();
-    if (!c) { toast('请先选择连接', true); return; }
+  async function exportDb(c = conn()) {
+    if (!c || !state.conns.includes(c)) { toast('连接已关闭或不可用', true); return; }
     try {
       const bytes = await c.engine.exportBinary();
       download(c.name.replace(/[^\w\u4e00-\u9fa5.-]+/g, '_') + '.db', new Blob([bytes], { type: 'application/octet-stream' }));

@@ -805,6 +805,55 @@ FROM servers GROUP BY online ORDER BY online DESC;`;
   await ev('const x=document.querySelector(".mask.show [data-cancel]"); if(x) x.click();');
   await sleep(250);
 
+  /* --- 10d. 真实页面中的连接切换与响应乱序 --- */
+  log('\n[10d] 查询结果归属与响应乱序');
+  await ev(`(() => {
+    window.__bindingFetch = window.fetch;
+    window.fetch = async function(url, opts) {
+      const response = await window.__bindingFetch.apply(this, arguments);
+      let body = {};
+      try { body = JSON.parse(opts && opts.body || '{}'); } catch(e) {}
+      if (String(url).includes('/api/query') && String(body.sql).includes('binding_hold')) {
+        await new Promise(resolve => { window.__releaseBinding = resolve; });
+      }
+      return response;
+    };
+    document.querySelector('[data-action="new-query"]').click();
+    const editor = document.getElementById('sql');
+    editor.value = 'SELECT 901 AS marker /* binding_hold */';
+    editor.setSelectionRange(0, 0);
+    document.querySelector('[data-action="execute"]').click();
+  })()`);
+  if (!await waitFor('typeof window.__releaseBinding === "function"', 10000, '延迟查询')) throw new Error('未捕获延迟查询');
+  await ev(`(() => {
+    const local = Array.from(document.querySelectorAll('#tree .node')).find(n => n.dataset.type === 'conn' && n.textContent.includes('业务数据库'));
+    local.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    window.__releaseBinding();
+  })()`);
+  check('慢查询返回后不在另一连接展示可编辑结果', await waitFor('document.getElementById("resBody").textContent.includes("该结果来自连接") && !document.querySelector("#resBody td.editable")', 10000));
+  await ev(`(() => {
+    const remote = Array.from(document.querySelectorAll('#tree .node')).find(n => n.dataset.type === 'conn' && n.textContent.includes('远程测试库'));
+    remote.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  })()`);
+  check('切回原连接可见原查询结果', await waitFor('document.querySelector("#resBody tbody td:nth-child(2)")?.textContent === "901"', 10000));
+  await ev(`(() => {
+    window.__releaseBinding = null;
+    const editor = document.getElementById('sql');
+    editor.value = 'SELECT 903 AS marker /* binding_hold */'; editor.setSelectionRange(0, 0);
+    document.querySelector('[data-action="execute"]').click();
+  })()`);
+  if (!await waitFor('typeof window.__releaseBinding === "function"', 10000, '旧查询延迟')) throw new Error('未捕获旧查询');
+  await ev(`(() => {
+    const editor = document.getElementById('sql');
+    editor.value = 'SELECT 902 AS marker'; editor.setSelectionRange(0, 0);
+    document.querySelector('[data-action="execute"]').click();
+  })()`);
+  check('较新查询可以先完成', await waitFor('document.querySelector("#resBody tbody td:nth-child(2)")?.textContent === "902"', 10000));
+  await ev('window.__releaseBinding()');
+  await sleep(300);
+  check('较旧查询迟到不会覆盖新结果', (await ev('document.querySelector("#resBody tbody td:nth-child(2)")?.textContent')).v === '902');
+  await ev('window.fetch = window.__bindingFetch; delete window.__bindingFetch; delete window.__releaseBinding;');
+
   // 清理：删掉本次测试写入的「最近连接」记录，避免污染用户界面
   try {
     const lr = await (await fetch(BASE + '/api/saved')).json();
