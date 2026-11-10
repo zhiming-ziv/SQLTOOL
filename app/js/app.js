@@ -800,8 +800,8 @@
       case 'script-create': showDdl(d._table && d._table.ddl || '-- 无 DDL', d.name + ' — CREATE 脚本', true); break;
       case 'script-insert': await scriptInsert(d.name, db); break;
       case 'export-db': await exportDb(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
-      case 'run-script': pickFile('.sql,.txt', f => runScriptFile(f)); break;
-      case 'import-csv-table': pickFile('.csv,.txt', f => importCsvToTable(f, d.name, db)); break;
+      case 'run-script': pickScriptFile(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
+      case 'import-csv-table': pickCsvFile(d.name, db); break;
       case 'export-csv-table': await exportTableCsv(d.name, db); break;
       case 'truncate': await confirmThen('清空表', '将执行 DELETE FROM ' + esc(qid(d.name)) + '，删除所有行（可回滚前请确认）。', async () => {
         // 先刷新再提示：doRefresh 自己会弹「已刷新」，放在后面会盖掉结果提示
@@ -2116,6 +2116,24 @@
     });
   }
 
+  // 打开文件选择器前就固定目标；用户选文件或读取文件时切换界面不能改变目标。
+  function pickScriptFile(c = conn()) {
+    const context = queryContext(c);
+    if (!contextOpen(context)) { toast('请先选择可用连接', true); return; }
+    pickFile('.sql,.txt', file => runScriptFile(file, context));
+  }
+  function pickCsvFile(tableName, database, c = conn()) {
+    const context = queryContext(c, database);
+    if (!contextOpen(context) || !tableName) { toast('请先选择要导入的表', true); return; }
+    pickFile('.csv,.txt', file => importCsvToTable(file, tableName, context.database, context));
+  }
+  function pickSelectedCsvFile() {
+    const row = $('#tree .node.selected');
+    const item = row && row._k;
+    const c = row && state.conns.find(value => value.id === row._connId);
+    pickCsvFile(item && item.type === 'table' ? item.name : null, item && item._db, c || null);
+  }
+
   async function exportDb(c = conn()) {
     if (!c || !state.conns.includes(c)) { toast('连接已关闭或不可用', true); return; }
     try {
@@ -2158,32 +2176,42 @@
     return rows;
   }
 
-  async function importCsvToTable(file, tableName, db) {
-    const text = await readFile(file, true);
+  async function importCsvToTable(file, tableName, db, context = queryContext(conn(), db)) {
+    if (!contextOpen(context)) { toast('导入目标连接已关闭或不可用', true); return; }
+    let text;
+    try { text = await readFile(file, true); }
+    catch (e) { toast('读取 CSV 失败：' + e.message, true); return; }
+    if (!contextOpen(context)) { toast('导入目标连接已关闭', true); return; }
     const rows = parseCsv(text).filter(r => r.length && !(r.length === 1 && r[0] === ''));
     if (!rows.length) { toast('CSV 为空', true); return; }
     const header = rows[0], data = rows.slice(1);
-    const e = eng();
-    if (!e) { toast('请先选择连接', true); return; }
-    const c0 = conn();
-    const tbl = findTable(tableName, db);
+    const e = context.engine, c0 = context.connection;
+    const tbl = findTable(tableName, context.database, c0);
     // 远程表的列是懒加载的，未展开过时 tbl.columns 为空，需要先读取
     let colInfo = tbl && tbl.columns;
     if (!colInfo && e.columns) {
-      try { colInfo = await e.columns(db, tableName); if (tbl) tbl.columns = colInfo; }
+      try { colInfo = await e.columns(context.database, tableName); if (tbl) tbl.columns = colInfo; }
       catch (err) { colInfo = null; }
     }
+    if (!contextOpen(context)) { toast('导入目标连接已关闭', true); return; }
     const tableCols = colInfo ? colInfo.map(x => x.name) : [];
     if (!tableCols.length) { toast('无法读取表 ' + tableName + ' 的列信息', true); return; }
-    const cols = header.map(h => h.trim()).filter(Boolean);
-    const useCols = cols.length && cols.every(c => tableCols.includes(c)) ? cols : tableCols;
+    // 保留表头在文件中的原始位置，忽略空表头时不能把后续数据列向前移动。
+    const mapping = header.map((name, index) => ({ name: name.trim(), index })).filter(col => col.name);
+    const useCols = mapping.map(col => col.name);
+    if (!useCols.length) { toast('CSV 没有有效的列名', true); return; }
+    if (new Set(useCols).size !== useCols.length) { toast('CSV 表头包含重复列名', true); return; }
+    const unknown = useCols.filter(name => !tableCols.includes(name));
+    if (unknown.length) { toast('CSV 包含未知列：' + unknown.join(', '), true); return; }
+    if (!data.length) { toast('CSV 没有数据行', true); return; }
 
-    await confirmThen('导入 CSV 到 ' + tableName,
+    await confirmThen('导入 CSV 到 ' + c0.name + (context.database ? ' / ' + context.database : '') + ' / ' + tableName,
       '共 <b>' + data.length + '</b> 行数据，将使用列：<br><span style="font-family:var(--font-mono);font-size:11px">' + esc(useCols.join(', ')) + '</span><br><br>数据将追加到现有表中。',
       async () => {
+        if (!contextOpen(context)) { toast('导入目标连接已关闭', true); return; }
         const ph = useCols.map(() => '?').join(', ');
         const sql = 'INSERT INTO ' + qid(tableName, c0) + ' (' + useCols.map(x => qid(x, c0)).join(', ') + ') VALUES (' + ph + ')';
-        const idxs = useCols.map(c => cols.indexOf(c));
+        const idxs = mapping.map(col => col.index);
         let ok = 0, fail = 0, firstErr = '';
         // 只有浏览器内 SQLite（有 e.db）才包一层本地事务；远程引擎每条语句独立执行
         const localTx = !!(e.db && e.db.run);
@@ -2191,24 +2219,33 @@
         try {
           if (localTx) e.db.run('BEGIN');
           for (let i = 0; i < data.length; i++) {
+            if (!contextOpen(context)) throw new Error('目标连接已关闭，已停止导入');
             const vals = idxs.map(ix => {
               const v = ix >= 0 ? data[i][ix] : null;
               return v === '' || v === undefined ? null : v;
             });
             // 必须 await：远程引擎的 run 是异步的，不等待会并发发出全部请求且错误无法捕获
-            try { await e.run(sql, vals, db || null); ok++; }
+            try { await e.run(sql, vals, context.database); ok++; }
             catch (err) { fail++; if (!firstErr) firstErr = err && err.message ? err.message : String(err); }
             if (i % 200 === 0) { busy(true, '正在导入…', i + ' / ' + data.length); await new Promise(r => setTimeout(r, 0)); }
           }
           if (localTx) e.db.run('COMMIT');
         } catch (err) {
           try { if (localTx) e.db.run('ROLLBACK'); } catch (x) { /* ignore */ }
-          ok = 0; fail = data.length; firstErr = firstErr || (err && err.message) || String(err);
+          if (localTx) ok = 0;
+          fail = data.length - ok;
+          firstErr = firstErr || (err && err.message) || String(err);
         }
         busy(false);
-        await persistConn(conn());
-        await doRefresh();
-        toast('导入完成：成功 ' + ok + ' 行' + (fail ? '，失败 ' + fail + ' 行（首个错误：' + firstErr + '）' : ''), fail > 0);
+        let followupError = '';
+        if (contextOpen(context)) {
+          try {
+            await persistConn(c0);
+            await refreshConnSchema(c0, context.database);
+            renderTree(); updateStatus();
+          } catch (err) { followupError = '；保存或刷新失败：' + err.message; }
+        }
+        toast('导入完成：成功 ' + ok + ' 行' + (fail ? '，失败 ' + fail + ' 行（首个错误：' + firstErr + '）' : '') + followupError, fail > 0 || !!followupError);
       });
   }
 
@@ -2244,11 +2281,16 @@
     busy(false);
   }
 
-  async function runScriptFile(file) {
-    const text = await readFile(file, true);
+  async function runScriptFile(file, context = queryContext(conn())) {
+    if (!contextOpen(context)) { toast('脚本目标连接已关闭或不可用', true); return; }
+    let text;
+    try { text = await readFile(file, true); }
+    catch (e) { toast('读取 SQL 文件失败：' + e.message, true); return; }
+    if (!contextOpen(context)) { toast('脚本目标连接已关闭', true); return; }
     if (!text.trim()) { toast('脚本为空', true); return; }
-    insertQuery(text);
-    await runQuery();
+    // 文件在独立标签页执行，既不拼接已有 SQL，也不沿用旧编辑器的选区。
+    const d = newDoc(text, file.name || '导入脚本.sql');
+    await runQuery({ document: d, context, sql: text });
   }
 
   async function scriptInsert(name, db) {
@@ -2683,8 +2725,8 @@
     },
     'new-query': () => newDoc(),
     'open-db': () => pickFile('.db,.sqlite,.sqlite3', importDbFile),
-    'import-csv': () => pickFile('.csv,.txt', f => importCsvToTable(f, currentTableName())),
-    'run-script': () => pickFile('.sql,.txt', runScriptFile),
+    'import-csv': () => pickSelectedCsvFile(),
+    'run-script': () => pickScriptFile(),
     'export-db': exportDb,
     'save': async () => { await saveAllDirty(); const d = doc(); if (d) { d.dirty = false; renderDocs(); } toast('已保存到浏览器本地'); },
     'execute': runQuery,
@@ -2785,11 +2827,6 @@
       }, true);
     }
   };
-
-  function currentTableName() {
-    const sel = $('#tree .node.selected');
-    return sel && sel._k && sel._k.type === 'table' ? sel._k.name : null;
-  }
 
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');

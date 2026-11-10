@@ -35,15 +35,87 @@ function normVal(v) {
 
 function normRow(row) { return row.map(normVal); }
 
+/** 跳过引号内容；双写的结束符及方言允许的反斜杠转义不结束当前片段。 */
+function quotedEnd(sql, start, close, backslash) {
+  let i = start + 1;
+  while (i < sql.length) {
+    if (backslash && sql[i] === '\\') { i += 2; continue; }
+    if (sql[i] === close) {
+      if (sql[i + 1] === close) { i += 2; continue; }
+      return i + 1;
+    }
+    i++;
+  }
+  return sql.length;
+}
+
+function blockCommentEnd(sql, start, nested) {
+  let i = start + 2, depth = 1;
+  while (i < sql.length && depth) {
+    if (nested && sql.slice(i, i + 2) === '/*') { depth++; i += 2; }
+    else if (sql.slice(i, i + 2) === '*/') { depth--; i += 2; }
+    else i++;
+  }
+  return i;
+}
+
+/** 只访问 SQL 代码字符，原样跳过字符串、标识符和注释。 */
+function scanSqlCode(sql, dialect, visit) {
+  let i = 0;
+  while (i < sql.length) {
+    const c = sql[i], pair = sql.slice(i, i + 2);
+    if (pair === '--' || (dialect === 'mysql' && c === '#')) {
+      while (i < sql.length && sql[i] !== '\n' && sql[i] !== '\r') i++;
+      continue;
+    }
+    if (pair === '/*') {
+      i = blockCommentEnd(sql, i, dialect === 'postgres' || dialect === 'mssql');
+      continue;
+    }
+    if (c === "'" || c === '"' || ((dialect === 'sqlite' || dialect === 'mysql') && c === '`')) {
+      const escapeString = dialect === 'postgres' && c === "'" && /[eE]/.test(sql[i - 1] || '') &&
+        (i < 2 || !/[\w$\u0080-\uffff]/.test(sql[i - 2]));
+      i = quotedEnd(sql, i, c, dialect === 'mysql' || escapeString);
+      continue;
+    }
+    if (c === '[' && (dialect === 'sqlite' || dialect === 'mssql')) {
+      i = quotedEnd(sql, i, ']', false);
+      continue;
+    }
+    if (dialect === 'postgres' && c === '$' && (i === 0 || !/[\w$\u0080-\uffff]/.test(sql[i - 1]))) {
+      const tag = sql.slice(i).match(/^\$(?:[a-zA-Z_\u0080-\uffff][\w\u0080-\uffff]*)?\$/);
+      if (tag) {
+        const end = sql.indexOf(tag[0], i + tag[0].length);
+        i = end < 0 ? sql.length : end + tag[0].length;
+        continue;
+      }
+    }
+    visit(i, c);
+    i++;
+  }
+}
+
+function replacePlaceholders(sql, dialect, placeholder) {
+  let start = 0, count = 0;
+  const parts = [];
+  scanSqlCode(sql, dialect, (i, c) => {
+    if (c !== '?') return;
+    // PG 复合 JSON 运算符不是参数；单独的 ? 与统一占位符有歧义，需改用对应函数。
+    if (dialect === 'postgres' && (sql[i - 1] === '@' || sql[i + 1] === '|' || sql[i + 1] === '&')) return;
+    parts.push(sql.slice(start, i), placeholder(count++));
+    start = i + 1;
+  });
+  parts.push(sql.slice(start));
+  return parts.join('');
+}
+
 /** 把 `?` 占位符依次替换为 $1,$2... (PostgreSQL) */
 function toDollar(sql) {
-  let i = 0;
-  return sql.replace(/\?/g, () => '$' + (++i));
+  return replacePlaceholders(sql, 'postgres', i => '$' + (i + 1));
 }
 /** 把 `?` 占位符依次替换为 @p0,@p1... (SQL Server) */
 function toAt(sql) {
-  let i = 0;
-  return sql.replace(/\?/g, () => '@p' + (i++));
+  return replacePlaceholders(sql, 'mssql', i => '@p' + i);
 }
 
 /** 判断语句是否会产生结果集 */
@@ -52,36 +124,31 @@ function isResultStatement(sql) {
 }
 
 /** 按分号切分多语句（尊重字符串、注释、引号标识符） */
-function splitStatements(sql) {
+function splitStatements(sql, dialect = 'sqlite') {
   const out = [];
-  let cur = '', i = 0;
-  let inS = false, inD = false, inB = false, inLine = false, inBlock = false;
-  while (i < sql.length) {
-    const c = sql[i], c2 = sql.substr(i, 2);
-    if (inLine) { cur += c; if (c === '\n') inLine = false; i++; continue; }
-    if (inBlock) { if (c2 === '*/') { cur += c2; i += 2; inBlock = false; continue; } cur += c; i++; continue; }
-    if (inS) { cur += c; if (c === "'") { if (sql[i + 1] === "'") { cur += "'"; i += 2; continue; } inS = false; } i++; continue; }
-    if (inD) { cur += c; if (c === '"') { if (sql[i + 1] === '"') { cur += '"'; i += 2; continue; } inD = false; } i++; continue; }
-    if (inB) { cur += c; if (c === ']') inB = false; i++; continue; }
-    if (c2 === '--') { inLine = true; cur += c2; i += 2; continue; }
-    if (c === '#') { inLine = true; cur += c; i++; continue; }
-    if (c2 === '/*') { inBlock = true; cur += c2; i += 2; continue; }
-    if (c === "'") { inS = true; cur += c; i++; continue; }
-    if (c === '"') { inD = true; cur += c; i++; continue; }
-    if (c === '[') { inB = true; cur += c; i++; continue; }
-    if (c === ';') { out.push(cur); cur = ''; i++; continue; }
-    cur += c; i++;
-  }
-  out.push(cur);
+  let start = 0;
+  scanSqlCode(sql, dialect, (i, c) => {
+    if (c === ';') { out.push(sql.slice(start, i)); start = i + 1; }
+  });
+  out.push(sql.slice(start));
   // 只丢弃「纯注释 / 空白」的片段；以注释开头但后面还有语句的（如 "-- 说明\nSELECT 1"）必须保留
   return out
     .map(s => s.trim())
-    .filter(s => s && stripLeadingComments(s));
+    .filter(s => s && stripLeadingComments(s, dialect));
 }
 
 /** 去掉语句开头的注释，用于判断类型（行注释可以没有结尾换行，如片段最后一行） */
-function stripLeadingComments(s) {
-  return s.replace(/^(\s*(--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/|#[^\n]*(\n|$)))+/g, '').trim();
+function stripLeadingComments(s, dialect = 'sqlite') {
+  let i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i])) { i++; continue; }
+    if (s.slice(i, i + 2) === '--' || (dialect === 'mysql' && s[i] === '#')) {
+      while (i < s.length && s[i] !== '\n' && s[i] !== '\r') i++;
+    } else if (s.slice(i, i + 2) === '/*') {
+      i = blockCommentEnd(s, i, dialect === 'postgres' || dialect === 'mssql');
+    } else break;
+  }
+  return s.slice(i).trim();
 }
 
 /**
@@ -173,10 +240,13 @@ const mysql = {
       sets.push({ columns, values: Array.isArray(r) ? r.map(normRow) : [] });
     };
 
-    const multi = Array.isArray(rows) && Array.isArray(fields) && Array.isArray(fields[0]);
+    // 多语句可先返回 DML 状态；不能只用第一条语句的 fields 判断。
+    const multi = Array.isArray(rows) && (
+      (Array.isArray(fields) && fields.some(Array.isArray)) ||
+      rows.some(r => r && !Array.isArray(r) && typeof r.affectedRows === 'number'));
     if (multi) {
       rows.forEach((r, i) => {
-        const f = fields[i];
+        const f = fields && fields[i];
         if (Array.isArray(f)) pushSet(r, f);
         else if (r && typeof r === 'object' && !Array.isArray(r)) affected += (r.affectedRows || 0);
       });
@@ -609,9 +679,8 @@ const mssql = {
     if (params && params.length) {
       text = toAt(sql);
       params.forEach((v, i) => {
-        // 字符串按原样绑定，其余尝试还原为数字
-        const val = (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)) ? Number(v) : v;
-        req.input('p' + i, val);
+        // 保留调用方的类型；数字字符串可能是编码，不能丢前导零或整数精度。
+        req.input('p' + i, v);
       });
     }
     const res = await req.query(text);
@@ -620,8 +689,10 @@ const mssql = {
     const recordsets = res.recordsets && res.recordsets.length ? res.recordsets : (res.recordset ? [res.recordset] : []);
     if (recordsets.length) {
       for (const rs of recordsets) {
-        if (!rs.length) continue;
-        const columns = Object.keys(rs[0]);
+        if (!Array.isArray(rs)) continue;
+        const columns = rs.columns ? Object.keys(rs.columns).sort((a, b) =>
+          (rs.columns[a].index || 0) - (rs.columns[b].index || 0)) : Object.keys(rs[0] || {});
+        if (!columns.length) continue;
         sets.push({ columns, values: rs.map(row => columns.map(c => normVal(row[c]))) });
       }
     }
@@ -787,43 +858,27 @@ const sqlite = {
     const stmts = splitStatements(sql);
     const sets = [];
     let affected = 0;
-
-    // 单语句且带参数：直接走参数绑定
-    if (stmts.length === 1 && params && params.length) {
-      const st = db.prepare(stmts[0]);
-      if (isResultStatement(stripLeadingComments(stmts[0]))) {
-        const rows = st.all(...params);
-        if (rows.length) {
-          const columns = Object.keys(rows[0]);
-          sets.push({ columns, values: rows.map(r => columns.map(c => normVal(r[c]))) });
-        } else {
-          sets.push({ columns: st.columns ? st.columns().map(c => c.name) : [], values: [] });
-        }
-      } else {
-        const r = st.run(...params);
-        affected += Number(r.changes || 0);
-      }
-      return { sets, rowsAffected: affected };
-    }
+    const counts = db.prepare('SELECT total_changes() AS total, changes() AS current');
 
     for (const raw of stmts) {
       const s = stripLeadingComments(raw);
       if (!s) continue;
-      if (isResultStatement(s)) {
-        const st = db.prepare(s);
-        const rows = st.all();
-        if (rows.length) {
-          const columns = Object.keys(rows[0]);
-          sets.push({ columns, values: rows.map(r => columns.map(c => normVal(r[c]))) });
-        } else {
-          let cols = [];
-          try { cols = st.columns().map(c => c.name); } catch (e) { /* ignore */ }
-          sets.push({ columns: cols, values: [] });
-        }
+      const st = db.prepare(s);
+      // 列元数据同时识别 WITH DML 和 RETURNING；旧版 Node 无此接口时保留关键字回退。
+      const metadata = typeof st.columns === 'function' ? st.columns().map(c => c.name) : null;
+      const bind = stmts.length === 1 && params && params.length ? params : [];
+      const before = counts.get().total;
+      if (metadata ? metadata.length > 0 : isResultStatement(s)) {
+        const rows = st.all(...bind);
+        const columns = metadata || (rows.length ? Object.keys(rows[0]) : []);
+        sets.push({ columns, values: rows.map(r => columns.map(c => normVal(r[c]))) });
       } else {
-        const r = db.prepare(s).run();
-        affected += Number(r.changes || 0);
+        st.run(...bind);
       }
+      const after = counts.get();
+      // DDL 和事务语句不会重置 changes()，需用累计值确认本条确有修改。
+      // 仍取 changes() 的直接影响行数，避免把触发器及外键级联重复算入。
+      if (after.total > before) affected += Number(after.current || 0);
     }
     return { sets, rowsAffected: affected };
   },

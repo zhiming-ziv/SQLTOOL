@@ -77,7 +77,10 @@ SQLTOOL/
 │   ├── api-test.js         后端 HTTP API 测试（65 项断言）
 │   ├── concurrency-test.js 并发压测与远程驱动竞态检查
 │   ├── concurrency-regression.js 连接建立、失败重试与关闭的回归测试
-│   └── connection-regression.js  查询及编辑的连接归属回归测试
+│   ├── connection-regression.js  查询及编辑的连接归属回归测试
+│   ├── driver-regression.js 驱动参数、结果集与 SQL 分句回归测试
+│   ├── import-regression.js 文件导入的连接归属与数据映射回归测试
+│   └── file-ui-test.js     浏览器真实文件导入导出测试
 └── shots/                  测试截图、日志和压测结果（不提交）
 ```
 
@@ -168,10 +171,16 @@ SQLTOOL/
 | 操作 | 说明 |
 |---|---|
 | 打开 `.db` / `.sqlite` | 校验 SQLite 魔数后真实打开 |
-| 导入 `.sql` 脚本 | 读入编辑器并执行 |
-| 导入 CSV 到指定表 | 自动匹配列名，事务批量插入 |
+| 导入 `.sql` 脚本 | 在独立查询标签页中执行文件正文，保留原标签页内容 |
+| 导入 CSV 到指定表 | 按表头匹配列名，按原始列位置读取数据，并报告成功 / 失败行数 |
 | 导出 `.db` | 导出完整数据库文件（仅浏览器内 SQLite） |
 | 导出 CSV / JSON | 导出当前结果集 |
+
+导入前会固定目标连接和数据库：SQL 脚本使用所选连接，CSV 使用所选表所属的连接和数据库。
+打开文件选择器、读取文件或确认导入期间切换界面，不会改变写入目标；目标连接关闭后停止后续导入。
+CSV 忽略空表头对应的数据列，拒绝重复、未知或全部为空的列名。
+浏览器内 SQLite 在一个事务中逐行尝试导入；通常的单行约束错误会计为失败，其余成功行提交，
+若批次异常中止则尝试回滚。远程引擎逐行提交，已成功写入的行不会因后续错误自动撤销。
 
 ### 持久化
 - 浏览器内数据库自动保存到 **IndexedDB**，刷新页面数据不丢
@@ -219,14 +228,20 @@ PostgreSQL / SQL Server 对同一会话、同一目标库的并发建连复用�
 
 | 差异点 | 处理方式 |
 |---|---|
-| 占位符 | 前端统一写 `?`；PostgreSQL 转成 `$1,$2`，SQL Server 转成 `@p0,@p1` |
+| 占位符 | 前端统一写 `?`；PostgreSQL 转成 `$1,$2`，SQL Server 转成 `@p0,@p1`，跳过字符串、注释与引号标识符 |
 | 标识符引用 | MySQL 用 `` ` ``，SQL Server 用 `[]`，其余用 `""` |
 | 分页语法 | SQL Server 用 `SELECT TOP n`，其余用 `LIMIT n` |
 | 切换数据库 | MySQL 用 `USE db`（连接级状态）；PostgreSQL 每库开独立连接；SQL Server 每库独立连接池 |
 | 行定位 | SQLite 用 `rowid`；有主键用主键列；**无主键退化为全列匹配** |
-| 多语句 | MySQL 开启 `multipleStatements`；其余逐个语句执行 |
+| 多语句 | MySQL 开启 `multipleStatements`；PostgreSQL / SQL Server 交由驱动执行；服务端 SQLite 按分号切分，跳过字符串、注释、反引号和方括号标识符 |
 | 过程 / 函数列表 | MySQL `information_schema.ROUTINES`；PostgreSQL `pg_proc`（含 `prokind` 区分过程/函数/聚合）；SQL Server `sys.objects` 按 `type` 分类；SQLite 无此类对象 |
 | 过程 / 函数定义 | MySQL `SHOW CREATE PROCEDURE/FUNCTION`（无权限时回退 `ROUTINE_DEFINITION`）；PostgreSQL `pg_get_functiondef(oid)`；SQL Server `sys.sql_modules.definition` |
+
+PostgreSQL 占位符转换也跳过美元引用和 `E'…'` 转义字符串，并保留 `?|`、`?&`、`@?` 运算符。
+带参数查询中的单独 JSONB `?` 运算符与统一占位符有歧义，请改用 `jsonb_exists` 等对应函数。
+SQL Server 参数保留调用方类型，数字形式的字符串不会被自动转成数值，避免丢失前导零或整数精度。
+MySQL 混合读写批次会保留全部结果集并累计影响行数；SQL Server 空结果集仍保留列名。
+服务端 SQLite 按各语句实际发生的直接数据修改累计影响行数，DDL 和事务控制语句不会重复累计上一条 DML 的行数。
 
 ### 安全设计
 - 服务**只监听 `127.0.0.1`**，不对局域网暴露
@@ -266,6 +281,15 @@ node tools/concurrency-regression.js
 # 覆盖切连接/切库、增删改、关闭、乱序、刷新目标和右键导出目标
 node tools/connection-regression.js
 
+# 模拟远程驱动 + 真实内存 SQLite：参数转换、类型、混合结果集与分句
+node tools/driver-regression.js
+
+# 真实前端函数 + 独立内存 SQLite：CSV/SQL 导入期间切连接、切库及数据映射
+node tools/import-regression.js
+
+# 自动启动独立服务和浏览器：真实文件导入导出（需安装 Chrome）
+node tools/file-ui-test.js
+
 # 自动启动独立服务，使用临时 SQLite 库；默认逐档测试 1/8/32/64/128 并发
 node tools/concurrency-test.js
 # 指定测试档位、每轮持续发请求秒数、轮数和报告路径
@@ -275,10 +299,10 @@ node tools/concurrency-test.js --levels=1,8,32,64,128 --duration=3 --rounds=2 --
 压测记录吞吐量、响应时间分位数、失败数、CPU、内存和事件循环延迟。
 它采用本机闭环请求（每个工作者最多一个在途请求），不等同于真实用户数量或长期容量保证。
 临时数据库和测试服务在结束时清理，报告默认保存在 `shots/`。
-远程驱动的竞态与生命周期检查使用模拟连接，**未经 MySQL / PostgreSQL / SQL Server 真库验证**。
+远程驱动的竞态、生命周期、参数和结果集检查使用模拟连接，**未经 MySQL / PostgreSQL / SQL Server 真库验证**。
 
 > **测试必须串行执行，不要并行跑。**
-> 两套测试都会读写 `connections.json`，并且都会占用 CPU 跑无头浏览器；
+> API / UI 等测试会读写 `connections.json`，浏览器测试也会占用 CPU；
 > 并行执行会互相干扰（写入互相覆盖、`waitFor` 超时）。
 > 逐条执行即可稳定全绿。
 
