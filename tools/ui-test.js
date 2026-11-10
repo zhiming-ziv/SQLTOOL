@@ -610,6 +610,13 @@ FROM servers GROUP BY online ORDER BY online DESC;`;
   await sleep(800);
   const remoteTree = (await ev('document.getElementById("tree").textContent')).v;
   check('远程对象树显示 servers 表', remoteTree.indexOf('servers') >= 0);
+  await ev(`(() => {
+    const node = Array.from(document.querySelectorAll('#tree .node')).find(n => n.dataset.name === 'servers');
+    node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 200 }));
+  })()`);
+  check('表菜单提供按需统计入口', (await ev('!!document.querySelector(\'#ctx [data-action="count-rows"]\')')).v);
+  await ev('document.querySelector(\'#ctx [data-action="count-rows"]\').click()');
+  check('服务端表按需返回精确行数', await waitFor('document.getElementById("toast").textContent === "servers：5 行"', 10000, '精确行数'));
   // 记录发往 /api/columns 的请求体，用于校验传过去的是「数据库名」而不是「架构名」
   await ev(`window.__colsCalls = [];
     (function(){ const f = window.fetch;

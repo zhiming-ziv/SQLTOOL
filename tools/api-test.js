@@ -134,7 +134,7 @@ async function api(pathname, body, method) {
   check('读取 schema 成功', sch.json.ok === true, sch.json.error);
   const tables = sch.json.data.tables || [];
   check('schema 返回 1 张表', tables.length === 1, '实际 ' + tables.length);
-  check('表名与行数正确', tables[0].name === 'products' && tables[0].rowCount === 5,
+  check('表名正确且默认不统计行数', tables[0].name === 'products' && tables[0].rowCount === null,
     tables[0].name + '/' + tables[0].rowCount);
   check('schema 标记 lazy（列按需加载）', tables[0].lazy === true);
 

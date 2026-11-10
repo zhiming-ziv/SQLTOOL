@@ -689,6 +689,7 @@
     showMenu(x, y,
       '<div class="c-title">' + esc(name) + '</div>' +
       mi('query', '选择前 1000 行', 'top1000') +
+      mi('query', '统计精确行数', 'count-rows') +
       mi('table', '编辑数据', 'edit-data') +
       '<div class="c-sep"></div>' +
       mi('query', '生成 SELECT 脚本', 'script-select') +
@@ -776,7 +777,7 @@
     return true;
   }
 
-  const TABLE_ACTIONS = new Set(['top1000', 'edit-data', 'script-select', 'script-insert',
+  const TABLE_ACTIONS = new Set(['count-rows', 'top1000', 'edit-data', 'script-select', 'script-insert',
     'import-csv-table', 'export-csv-table', 'truncate', 'drop-table']);
 
   async function handleAction(a) {
@@ -786,6 +787,12 @@
       case 'new-query': newDoc(); break;
       case 'refresh': await doRefresh(); break;
       case 'top1000': openTableQuery(d.name, { database: d._db }); break;
+      case 'count-rows': {
+        const result = await execSql('SELECT COUNT(*) AS row_count FROM ' + qid(d.name) + ';', { database: db });
+        if (!result || result.error) toast((result && result.error) || '统计失败', true);
+        else toast(d.name + '：' + result.sets[0].values[0][0] + ' 行');
+        break;
+      }
       case 'edit-data': openTableQuery(d.name, { database: d._db }); break;
       case 'show-ddl': showDdl(d._table && d._table.ddl, d.name); break;
       case 'script-select': insertQuery(selectTopSql(d.name, 100)); break;

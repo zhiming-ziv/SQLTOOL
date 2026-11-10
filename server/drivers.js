@@ -144,8 +144,8 @@ const mysql = {
   async _ensure(session) {
     if (!session.broken) return session.conn;
     try { session.conn.destroy(); } catch (e) { /* ignore */ }
-    session.broken = null;
     session.conn = await this._open(session.cfg, session);
+    session.broken = null;
     session.database = session.cfg.database || null;   // 新连接回到初始库，下面的 USE 逻辑会再切过去
     return session.conn;
   },
@@ -838,10 +838,8 @@ const sqlite = {
     const tables = [], views = [];
     for (const r of master) {
       const isView = r.type === 'view';
-      let count = null;
-      try { count = Number(db.prepare('SELECT COUNT(*) AS c FROM "' + r.name.replace(/"/g, '""') + '"').get().c); }
-      catch (e) { /* ignore */ }
-      const item = { name: r.name, schema: 'main', type: isView ? 'view' : 'table', rowCount: count, rowCountApprox: false, lazy: true };
+      // 展开对象树只读元数据，精确行数由用户按需查询。
+      const item = { name: r.name, schema: 'main', type: isView ? 'view' : 'table', rowCount: null, rowCountApprox: false, lazy: true };
       (isView ? views : tables).push(item);
     }
     return { tables, views };
@@ -869,6 +867,47 @@ const sqlite = {
  * 注册表
  * ========================================================== */
 const DRIVERS = { mysql, postgres, mssql, sqlite };
+
+// MySQL 的连接状态由 USE 和事务共享；把整个操作串行排队，而非只排 SQL 命令。
+for (const name of ['query', 'databases', 'schema', 'columns', 'routines', 'routineDdl']) {
+  const operation = mysql[name];
+  mysql[name] = function (session, ...args) {
+    if (session.closing) return Promise.reject(new Error('连接正在关闭'));
+    const task = (session.queue || Promise.resolve()).then(() => operation.call(this, session, ...args));
+    session.queue = task.catch(() => {});
+    return task;
+  };
+}
+
+// 同一目标库只保留一个正在建立的连接，包含失效重连；失败后允许重新尝试。
+for (const [driver, method] of [[postgres, '_clientFor'], [mssql, '_poolFor']]) {
+  const acquire = driver[method];
+  driver[method] = function (session, database) {
+    if (session.closing) return Promise.reject(new Error('连接正在关闭'));
+    const key = database || session.database;
+    if (!session.pending) session.pending = new Map();
+    if (session.pending.has(key)) return session.pending.get(key);
+    const task = Promise.resolve().then(() => acquire.call(this, session, database))
+      .finally(() => session.pending.delete(key));
+    session.pending.set(key, task);
+    return task;
+  };
+}
+
+// 关闭前阻止新操作，并等待已排队操作及正在建立的资源，避免遗漏晚到的连接。
+for (const driver of [mysql, postgres, mssql]) {
+  const close = driver.close;
+  driver.close = function (session) {
+    if (session.closeTask) return session.closeTask;
+    session.closing = true;
+    session.closeTask = (async () => {
+      if (session.queue) await session.queue;
+      if (session.pending) await Promise.allSettled([...session.pending.values()]);
+      await close.call(this, session);
+    })();
+    return session.closeTask;
+  };
+}
 
 const REMOTE_DRIVERS = ['mysql', 'postgres', 'mssql'];   // 需要网络连接
 const ALL_IDS = Object.keys(DRIVERS);
