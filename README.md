@@ -1,6 +1,6 @@
 # SQLTool — 数据库工作台
 
-参照 **SQL Server Management Studio** 界面构建的数据库管理工具，支持 **SQLite / MySQL / PostgreSQL / SQL Server**。
+参照 **SQL Server Management Studio** 界面构建的数据库管理工具，支持 **SQLite / MySQL / PostgreSQL / SQL Server**，界面可切换**简体中文、繁体中文和英文**。
 
 它有两种截然不同的引擎接入方式，理解这一点很重要：
 
@@ -62,13 +62,16 @@ SQLTOOL/
 ├── server.js               本地服务器：静态资源 + /api/* 路由
 ├── server/
 │   ├── api.js              HTTP API（连接池、查询、schema、已保存连接）
-│   └── drivers.js          数据库驱动适配层（mysql / postgres / mssql / sqlite）
+│   ├── drivers.js          数据库驱动适配层（mysql / postgres / mssql / sqlite）
+│   └── messages.js         自有错误词条键与参数，保留原始数据库错误
 ├── app/                    ★ 数据库工作台
 │   ├── index.html          应用外壳
 │   ├── css/app.css         样式（深色 / SSMS 经典浅色双主题）
 │   ├── js/engine.js        引擎适配层 + IndexedDB 持久化
 │   ├── js/app.js           主逻辑（对象树、编辑器、结果网格、导入导出）
 │   ├── js/templates.js     SQL 模板库（本地存储、搜索管理、JSON 导入导出）
+│   ├── js/i18n.js          语言偏好、词条参数与局部界面更新
+│   ├── js/locales/         zh-CN / zh-TW / en 语言包，无额外依赖
 │   ├── selftest.html       引擎自检页（26 项断言）
 │   └── vendor/             sql.js（SQLite 3.45.2 的 WebAssembly 版本，离线可用）
 ├── demo/index.html         SSMS 界面还原稿（纯静态，模拟数据）
@@ -82,13 +85,25 @@ SQLTOOL/
 │   ├── driver-regression.js 驱动参数、结果集与 SQL 分句回归测试
 │   ├── import-regression.js 文件导入的连接归属与数据映射回归测试
 │   ├── file-ui-test.js     浏览器真实文件导入导出测试
-│   └── template-test.js    SQL 模板库与编辑器集成测试
+│   ├── template-test.js    SQL 模板库与编辑器集成测试
+│   └── i18n-test.js        三语言切换、状态保留、错误与布局测试
 └── shots/                  测试截图、日志和压测结果（不提交）
 ```
 
 ---
 
 ## 功能
+
+### 界面语言
+
+- 入口页、工作台标题栏和弹窗标题栏提供 **简体中文 / 繁體中文 / English** 切换器。默认简体中文；繁体中文采用 `zh-TW`，使用“資料庫、連線、範本”等术语。
+- 切换即时生效，不刷新页面，不重新执行 SQL，保留编辑器内容、选区、已有查询结果及表单输入。菜单、对象分组、状态、错误提示和模板管理界面随语言更新。
+- 语言偏好保存在当前浏览器同源的 `localStorage`（`sqltool.language`），刷新后继续使用；不同端口、主机或浏览器的偏好独立。本地存储不可用时仍可在当前页面切换。
+- 连接名、数据库对象名、SQL 正文、模板内容、查询数据和导出文件保持原文。模板时间与结果网格中的整数按当前语言显示；导出仍使用原始数据。
+- 应用自有错误支持三语言；数据库引擎返回的原始报错保留原文。API 继续返回兼容的 `error` 字符串，自有错误额外携带 `errorKey` / `errorParams`。
+- 本轮覆盖入口页与生产工作台；静态演示稿、开发自检页、服务端终端日志及内置示例 SQL 保留简体中文。
+
+维护词条时同步修改 `app/js/locales/` 下的三个文件，保持键、参数及 HTML 结构一致。动态界面用 `SqlToolI18n.t()` 创建文案，通过 `text()` / `html()` / `attr()` 绑定；HTML 中的动态数据仍须转义。SQL、持久化数据或文件内容需要普通字符串时，先用 `resolve()` 固定当前文本。
 
 ### 连接管理
 - 一个对话框里可选 **5 种连接类型**：
@@ -330,6 +345,10 @@ node tools/file-ui-test.js
 # 使用临时浏览器配置，不接触日常浏览器中的模板；需 Node.js 22.5+ 和 Chrome
 npm run test:templates
 # Windows PowerShell 若阻止 npm.ps1，可使用 npm.cmd run test:templates
+
+# 自动启动独立服务和 Chrome：三语言词条、切换状态保留、错误、偏好及排版
+# 使用临时浏览器和 SQLite，拦截保存连接操作；报告写入 shots/i18n-results.json
+npm run test:i18n
 
 # 自动启动独立服务，使用临时 SQLite 库；默认逐档测试 1/8/32/64/128 并发
 node tools/concurrency-test.js

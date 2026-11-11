@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const api = require('./server/api');
+const E = require('./server/messages');
 
 const ROOT = __dirname;
 const PORT = parseInt(process.argv[2], 10) || 8777;
@@ -57,14 +58,14 @@ function readBody(req) {
     const chunks = [];
     req.on('data', c => {
       size += c.length;
-      if (size > api.MAX_BODY) { reject(new Error('请求体过大')); req.destroy(); return; }
+      if (size > api.MAX_BODY) { reject(E.make("api.bodyTooLarge")); req.destroy(); return; }
       chunks.push(c);
     });
     req.on('end', () => {
       if (!chunks.length) return resolve({});
       const txt = Buffer.concat(chunks).toString('utf8');
       try { resolve(txt ? JSON.parse(txt) : {}); }
-      catch (e) { reject(new Error('请求体不是合法 JSON')); }
+      catch (e) { reject(E.make("api.invalidJson")); }
     });
     req.on('error', reject);
   });
@@ -81,20 +82,20 @@ const server = http.createServer(async (req, res) => {
     const bad = api.checkRequest(req);
     if (bad) {
       res.writeHead(bad.code, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: bad.error }));
+      return res.end(JSON.stringify({ ok: false, ...E.packet(bad) }));
     }
     let body = {};
     if (req.method === 'POST' || req.method === 'PUT') {
       try { body = await readBody(req); }
       catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ ok: false, error: e.message }));
+        return res.end(JSON.stringify({ ok: false, ...E.packet(e) }));
       }
     }
     const handled = await api.handle(req, res, pathname, body);
     if (!handled) {
       res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: false, error: '未知接口: ' + pathname }));
+      res.end(JSON.stringify({ ok: false, ...E.packet(E.make('api.unknownRoute', { path: pathname })) }));
     }
     return;
   }

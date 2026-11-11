@@ -7,6 +7,7 @@
  * ============================================================ */
 (function (global) {
   'use strict';
+  const I = window.SqlToolI18n;
 
   const VENDOR = new URL('../vendor/', document.currentScript.src).href;
 
@@ -32,8 +33,8 @@
           if (!d.objectStoreNames.contains(META)) d.createObjectStore(META);
         };
         req.onsuccess = () => res(req.result);
-        req.onerror = () => rej(req.error || new Error('无法打开 IndexedDB'));
-        req.onblocked = () => rej(new Error('IndexedDB 被其他标签页占用，请关闭其他页面后重试'));
+        req.onerror = () => rej(req.error || I.error(I.t("engine.cannot_open_indexeddb_0d94d5")));
+        req.onblocked = () => rej(I.error(I.t("engine.indexeddb_is_blocked_by_another_tab_186c1e")));
       });
       return _dbp;
     }
@@ -49,8 +50,8 @@
         let req;
         try { req = fn(t.objectStore(name)); } catch (e) { rej(e); return; }
         t.oncomplete = () => res(req ? req.result : undefined);
-        t.onerror = () => rej(t.error || new Error('IndexedDB 事务失败'));
-        t.onabort = () => rej(t.error || new Error('IndexedDB 事务中止'));
+        t.onerror = () => rej(t.error || I.error(I.t("engine.indexeddb_transaction_failed_4668f7")));
+        t.onabort = () => rej(t.error || I.error(I.t("engine.indexeddb_transaction_aborted_8556d5")));
       }));
     }
 
@@ -76,7 +77,7 @@
       s.src = src;
       s.dataset.src = src;
       s.onload = res;
-      s.onerror = () => rej(new Error('脚本加载失败: ' + src));
+      s.onerror = () => rej(I.error(I.t("engine.script_failed_to_load_d8ffcb", { p0: src })));
       document.head.appendChild(s);
     });
   }
@@ -103,7 +104,7 @@
     static async ensureLib() {
       if (global.initSqlJs) return;
       await loadScript(VENDOR + 'sql-wasm.js');
-      if (!global.initSqlJs) throw new Error('sql.js 初始化失败');
+      if (!global.initSqlJs) throw I.error(I.t("engine.sql_js_initialization_failed_d0170e"));
     }
 
     async open(opts) {
@@ -233,7 +234,7 @@
           if (DuckDbEngine._mod && DuckDbEngine._mod.AsyncDuckDB) return DuckDbEngine._mod;
         } catch (e) { lastErr = e; }
       }
-      throw new Error('DuckDB 引擎加载失败（需要联网）：' + (lastErr ? lastErr.message : '未知错误'));
+      throw I.error(I.t("engine.duckdb_engine_failed_to_load_internet_19f878", { p0: lastErr ? I.detail(lastErr) : I.t("engine.unknown_error_13a466") }));
     }
 
     async open() {
@@ -344,12 +345,12 @@
         body: body ? JSON.stringify(body) : undefined
       });
     } catch (e) {
-      throw new Error('无法连接本地后端服务，请确认 server.js 正在运行');
+      throw I.error(I.t("engine.cannot_connect_to_the_local_backend_bd72a5"));
     }
     let json;
     try { json = await res.json(); }
-    catch (e) { throw new Error('后端返回了非 JSON 响应（HTTP ' + res.status + '）'); }
-    if (!json.ok) throw new Error(json.error || ('请求失败（HTTP ' + res.status + '）'));
+    catch (e) { throw I.error(I.t("engine.backend_returned_a_non_json_response_37a501", { p0: res.status })); }
+    if (!json.ok) throw I.error(I.fromError(json) || I.t("engine.request_failed_http_f21a09", { p0: res.status }));
     return json.data;
   }
 
@@ -357,7 +358,7 @@
     constructor() {
       this.kind = 'remote';
       this.dialect = null;
-      this.label = '远程数据库';
+      this.label = I.t("engine.remote_database_a3fe50");
       this.meta = null;
     }
 
@@ -372,7 +373,7 @@
       });
       this.meta = data;
       this.dialect = data.dialect;
-      this.label = data.label;
+      this.label = data.dialect === 'sqlite' ? I.t('driver.sqliteLabel') : data.label;
       return this;
     }
 
@@ -430,7 +431,7 @@
     async attached() { return []; }
 
     async exportBinary() {
-      throw new Error('远程数据库不支持导出为 .db 文件，请使用结果面板的「CSV / JSON」导出');
+      throw I.error(I.t("engine.remote_databases_cannot_be_exported_as_34c841"));
     }
 
     async close() {
@@ -460,7 +461,7 @@
     engines: { sqlite: SqliteEngine, duckdb: DuckDbEngine, remote: RemoteEngine },
     create(kind) {
       const C = global.SqlTool.engines[kind];
-      if (!C) throw new Error('未知引擎: ' + kind);
+      if (!C) throw I.error(I.t("engine.unknown_engine_6b2c82", { p0: kind }));
       return new C();
     }
   };

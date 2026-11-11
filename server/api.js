@@ -5,6 +5,7 @@
  * 所有响应统一为 { ok: true, data } 或 { ok: false, error }
  * ============================================================ */
 'use strict';
+const E = require('./messages');
 
 const fs = require('fs');
 const crypto = require('crypto');
@@ -36,18 +37,18 @@ function isLoopbackHost(host) { return LOOPBACK_HOST.test(String(host || '')); }
  */
 function checkRequest(req) {
   const host = String(req.headers.host || '');
-  if (!isLoopbackHost(host)) return { code: 403, error: '仅允许通过 127.0.0.1 访问' };
+  if (!isLoopbackHost(host)) return { code: 403, ...E.packet(E.make("api.loopback")) };
   const origin = req.headers.origin;
   if (origin !== undefined && origin !== 'http://' + host) {
-    return { code: 403, error: '拒绝跨源请求' };
+    return { code: 403, ...E.packet(E.make("api.crossOrigin")) };
   }
   const site = req.headers['sec-fetch-site'];
   if (site !== undefined && site !== 'same-origin' && site !== 'none') {
-    return { code: 403, error: '拒绝跨源请求' };
+    return { code: 403, ...E.packet(E.make("api.crossOrigin")) };
   }
   if (req.method === 'POST' || req.method === 'PUT') {
     const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (ct !== 'application/json') return { code: 415, error: '请求必须使用 Content-Type: application/json' };
+    if (ct !== 'application/json') return { code: 415, ...E.packet(E.make("api.contentType")) };
   }
   return null;
 }
@@ -119,7 +120,7 @@ function writeSaved(list) {
  * 路由
  * -------------------------------------------------------- */
 function ok(res, data) { sendJson(res, 200, { ok: true, data }); }
-function fail(res, msg, code) { sendJson(res, code || 400, { ok: false, error: String(msg) }); }
+function fail(res, msg, code) { sendJson(res, code || 400, { ok: false, ...E.packet(msg) }); }
 function sendJson(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, {
@@ -132,7 +133,7 @@ function sendJson(res, code, obj) {
 
 function sessionOf(res, connId) {
   const s = SESSIONS.get(connId);
-  if (!s) { fail(res, '连接不存在或已超时，请重新连接', 410); return null; }
+  if (!s) { fail(res, E.make("api.sessionExpired"), 410); return null; }
   s.lastUsed = Date.now();
   return s;
 }
@@ -141,7 +142,7 @@ function sessionOf(res, connId) {
 async function handle(req, res, pathname, body) {
   // Host / Origin / Content-Type 校验（server.js 读取请求体前已校验一次，这里兜底）
   const bad = checkRequest(req);
-  if (bad) { fail(res, bad.error, bad.code); return true; }
+  if (bad) { fail(res, bad, bad.code); return true; }
 
   try {
     /* ---------- 驱动列表 ---------- */
@@ -156,7 +157,7 @@ async function handle(req, res, pathname, body) {
       // 通过已保存连接发起：由服务端补齐密码，密码不回传前端
       if (cfg.savedId) {
         const s = readSaved().find(x => x.id === cfg.savedId);
-        if (!s) return fail(res, '未找到该已保存连接，可能已被删除'), true;
+        if (!s) return fail(res, E.make("api.savedMissing")), true;
         cfg = {
           driver: s.driver, host: s.host, port: s.port,
           user: s.user, password: s.password || '',
@@ -166,16 +167,16 @@ async function handle(req, res, pathname, body) {
       }
 
       const driver = D.DRIVERS[cfg.driver];
-      if (!driver) return fail(res, '未知的驱动：' + cfg.driver), true;
+      if (!driver) return fail(res, E.make('api.unknownDriver', { driver: cfg.driver })), true;
 
-      if (driver.needsHost && !cfg.host) return fail(res, '请填写主机地址'), true;
-      if (driver.needsHost && !cfg.user) return fail(res, '请填写用户名'), true;
+      if (driver.needsHost && !cfg.host) return fail(res, E.make("api.hostRequired")), true;
+      if (driver.needsHost && !cfg.user) return fail(res, E.make("api.userRequired")), true;
 
       let session;
       try {
         session = await driver.connect(cfg);
       } catch (e) {
-        return fail(res, '连接失败：' + (e && e.message ? e.message : e)), true;
+        return fail(res, E.make("api.connectFailed", { detail: e })), true;
       }
 
       const info = await fetchServerInfo(cfg.driver, driver, session);
@@ -222,7 +223,7 @@ async function handle(req, res, pathname, body) {
       const s = sessionOf(res, b.connId);
       if (!s) return true;
       const sql = String(b.sql || '');
-      if (!sql.trim()) return fail(res, 'SQL 不能为空'), true;
+      if (!sql.trim()) return fail(res, E.make("api.sqlRequired")), true;
 
       const t0 = Date.now();
       try {
@@ -235,7 +236,7 @@ async function handle(req, res, pathname, body) {
       } catch (e) {
         return sendJson(res, 200, {
           ok: false,
-          error: (e && e.message ? e.message : String(e)),
+          ...E.packet(e),
           sqlError: true,
           ms: Date.now() - t0
         }), true;
@@ -268,7 +269,7 @@ async function handle(req, res, pathname, body) {
           functions
         }), true;
       } catch (e) {
-        return fail(res, '读取结构失败：' + (e && e.message ? e.message : e)), true;
+        return fail(res, E.make("api.schemaFailed", { detail: e })), true;
       }
     }
 
@@ -278,17 +279,17 @@ async function handle(req, res, pathname, body) {
       const s = sessionOf(res, b.connId);
       if (!s) return true;
       const database = b.database || s.info.database || (s.cfg.database || null);
-      if (!b.name) return fail(res, '缺少对象名'), true;
+      if (!b.name) return fail(res, E.make("api.nameRequired")), true;
       try {
         if (typeof s.driver.routineDdl !== 'function') {
-          return fail(res, '当前引擎不支持读取存储过程 / 函数定义'), true;
+          return fail(res, E.make("api.routineUnsupported")), true;
         }
         const ddl = await s.driver.routineDdl(s.session, database, {
           name: b.name, schema: b.schema, kind: b.kind, oid: b.oid
         });
         return ok(res, { ddl: ddl || '' }), true;
       } catch (e) {
-        return fail(res, '读取定义失败：' + (e && e.message ? e.message : e)), true;
+        return fail(res, E.make("api.definitionFailed", { detail: e })), true;
       }
     }
 
@@ -301,7 +302,7 @@ async function handle(req, res, pathname, body) {
         const cols = await s.driver.columns(s.session, b.database || null, b.table);
         return ok(res, { columns: cols }), true;
       } catch (e) {
-        return fail(res, '读取列定义失败：' + (e && e.message ? e.message : e)), true;
+        return fail(res, E.make("api.columnsFailed", { detail: e })), true;
       }
     }
 
@@ -310,7 +311,7 @@ async function handle(req, res, pathname, body) {
       const s = sessionOf(res, (body || {}).connId);
       if (!s) return true;
       try { return ok(res, { databases: await s.driver.databases(s.session) }), true; }
-      catch (e) { return fail(res, e.message), true; }
+      catch (e) { return fail(res, e), true; }
     }
 
     /* ---------- 已保存的连接 ---------- */
@@ -321,7 +322,7 @@ async function handle(req, res, pathname, body) {
 
     if (pathname === '/api/saved' && req.method === 'POST') {
       const cfg = body || {};
-      if (!cfg.driver) return fail(res, '缺少驱动类型'), true;
+      if (!cfg.driver) return fail(res, E.make("api.driverRequired")), true;
       const list = readSaved();
 
       // 按「驱动 + 主机 + 端口 + 用户 + 库 + 文件」去重，避免每次连接都新增一条
@@ -368,7 +369,7 @@ async function handle(req, res, pathname, body) {
 
     return false;
   } catch (e) {
-    fail(res, '服务器内部错误：' + (e && e.message ? e.message : e), 500);
+    fail(res, E.make("api.internal", { detail: e }), 500);
     return true;
   }
 }

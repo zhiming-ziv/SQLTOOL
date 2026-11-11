@@ -58,7 +58,7 @@ async function fixture(fn) {
       readFile: async file => file.text,
       pickFile: (accept, callback) => { fileCallback = callback; },
       findTable: (name, db, c) => ({ columns: columnsCached ? columns : null }),
-      toast: message => messages.push(message), esc: String, busy: noop,
+      toast: message => messages.push(String(message)), esc: String, busy: noop,
       qid: name => '"' + name.replace(/"/g, '""') + '"',
       confirmThen: async (title, body, callback) => { confirmCallback = callback; },
       persistConn: async c => persisted.push(c.id),
@@ -70,7 +70,10 @@ async function fixture(fn) {
         opts.document.result = await opts.context.engine.exec(opts.sql, opts.context.database);
       }
     };
-    vm.createContext(context); vm.runInContext(code, context);
+    vm.createContext(context);
+    for (const file of ['locales/zh-CN.js', 'i18n.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../app/js', file), 'utf8'), context);
+    context.I = context.SqlToolI18n;
+    vm.runInContext(code, context);
     const a = state.conns[0], b = state.conns[1];
     const rows = async key => (await DRIVERS.sqlite.query(databases[key], 'SELECT * FROM items ORDER BY id', [])).sets[0].values;
     await fn({ context, state, editor, a, b, writes, persisted, refreshed, queries, messages, rows,

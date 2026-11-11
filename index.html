@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SQLTool — 浏览器内数据库工作台</title>
+<title data-i18n="home.sqltool_browser_database_workbench_b72419">SQLTool — 浏览器内数据库工作台</title>
 <style>
   :root{
     --bg:#1E1E1E; --panel:#252526; --panel2:#2D2D30; --border:#3F3F46;
@@ -50,6 +50,7 @@
 </head>
 <body>
 <div class="wrap">
+  <div style="text-align:right;margin-bottom:16px"><select data-language-select aria-label="Language / 语言" style="padding:5px;background:var(--panel);color:var(--fg);border:1px solid var(--border)"><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option></select></div>
   <header>
     <svg viewBox="0 0 32 32">
       <ellipse cx="16" cy="8" rx="11" ry="4.2" fill="#A4373A"/>
@@ -59,60 +60,64 @@
     </svg>
     <div>
       <h1>SQLTool</h1>
-      <p class="sub">浏览器内运行的数据库工作台 · 界面参照 SQL Server Management Studio</p>
+      <p class="sub"><span data-i18n="home.a_database_workbench_in_your_browser_2b07bb">浏览器内运行的数据库工作台 · 界面参照 SQL Server Management Studio</span></p>
     </div>
   </header>
 
   <div class="badges">
-    <span class="badge">SQLite <b>3.45.2</b> (浏览器内 WebAssembly)</span>
+    <span class="badge">SQLite <b>3.45.2</b> <span data-i18n="home.webassembly_in_your_browser_f6393c">(浏览器内 WebAssembly)</span></span>
     <span class="badge">MySQL / PostgreSQL / SQL Server</span>
-    <span class="badge">本地代理 · 仅监听 <b>127.0.0.1</b></span>
-    <span class="badge">离线可用（浏览器内引擎）</span>
+    <span class="badge"><span data-i18n="home.local_proxy_listening_only_on_7bb857">本地代理 · 仅监听</span> <b>127.0.0.1</b></span>
+    <span class="badge"><span data-i18n="home.offline_support_browser_engine_cb2863">离线可用（浏览器内引擎）</span></span>
   </div>
 
   <div class="cards">
     <a class="card primary" href="app/index.html">
-      <h2>打开数据库工作台 <span class="tag">真实可用</span></h2>
-      <p>浏览器内跑一个真正的 SQLite 引擎；也可以经本地代理连接 MySQL / PostgreSQL / SQL Server。</p>
+      <h2><span data-i18n="home.open_database_workbench_cbba6c">打开数据库工作台</span> <span class="tag"><span data-i18n="home.fully_functional_034f6e">真实可用</span></span></h2>
+      <p><span data-i18n="home.run_a_real_sqlite_engine_in_e2d8b9">浏览器内跑一个真正的 SQLite 引擎；也可以经本地代理连接 MySQL / PostgreSQL / SQL Server。</span></p>
       <ul>
-        <li>执行任意 <b>DDL / DML</b>：建表、索引、视图、触发器、外键</li>
-        <li>支持 <b>MySQL / PostgreSQL / SQL Server</b> 与服务器端 SQLite 文件</li>
-        <li>左侧对象树读取<b>真实 schema</b>，双击表名直接看数据</li>
-        <li>双击单元格<b>直接改库</b>，支持 NULL、类型、约束校验</li>
-        <li>导入 <b>.db / .sql / CSV</b>，导出 <b>.db / CSV / JSON</b></li>
-        <li>数据持久化到浏览器，刷新不丢；随时导出成 .db 文件</li>
-        <li>显示 <b>EXPLAIN QUERY PLAN</b> 真实执行计划</li>
+        <li><span data-i18n="home.execute_2909cb">执行任意</span> <b>DDL / DML</b><span data-i18n="home.tables_indexes_views_triggers_and_foreign_0595fe">：建表、索引、视图、触发器、外键</span></li>
+        <li><span data-i18n="home.supports_d93373">支持</span> <b>MySQL / PostgreSQL / SQL Server</b> <span data-i18n="home.and_sqlite_files_on_the_server_e150a8">与服务器端 SQLite 文件</span></li>
+        <li><span data-i18n="home.the_object_tree_shows_the_e23230">左侧对象树读取</span><b><span data-i18n="home.actual_schema_5f72aa">真实 schema</span></b><span data-i18n="home.double_click_a_table_to_view_0fab79">，双击表名直接看数据</span></li>
+        <li><span data-i18n="home.double_click_a_cell_to_21ab42">双击单元格</span><b><span data-i18n="home.edit_the_database_e98a5e">直接改库</span></b><span data-i18n="home.with_null_type_and_constraint_checks_30cf55">，支持 NULL、类型、约束校验</span></li>
+        <li><span data-i18n="home.import_576d81">导入</span> <b>.db / .sql / CSV</b><span data-i18n="home.export_1a8514">，导出</span> <b>.db / CSV / JSON</b></li>
+        <li><span data-i18n="home.persist_data_in_your_browser_across_724058">数据持久化到浏览器，刷新不丢；随时导出成 .db 文件</span></li>
+        <li><span data-i18n="home.display_the_4e1449">显示</span> <b>EXPLAIN QUERY PLAN</b> <span data-i18n="home.execution_plan_8c6b01">真实执行计划</span></li>
       </ul>
     </a>
 
     <a class="card" href="demo/index.html">
-      <h2>查看界面演示 <span class="tag alt">纯静态</span></h2>
-      <p>最初的 SSMS 界面还原稿，使用模拟数据，用于对照视觉细节。</p>
+      <h2><span data-i18n="home.view_interface_demo_d950e1">查看界面演示</span> <span class="tag alt"><span data-i18n="home.static_only_6cc7bf">纯静态</span></span></h2>
+      <p><span data-i18n="home.the_original_ssms_interface_mockup_using_00f903">最初的 SSMS 界面还原稿，使用模拟数据，用于对照视觉细节。</span></p>
       <ul>
-        <li>完整的菜单栏 / 工具栏 / 状态栏</li>
-        <li>对象资源管理器与查询窗口布局</li>
-        <li>深色与 SSMS 经典浅色两套主题</li>
+        <li><span data-i18n="home.complete_menu_toolbar_and_status_bar_241d1f">完整的菜单栏 / 工具栏 / 状态栏</span></li>
+        <li><span data-i18n="home.object_explorer_and_query_window_layout_1a92aa">对象资源管理器与查询窗口布局</span></li>
+        <li><span data-i18n="home.dark_and_ssms_classic_light_themes_9cd82b">深色与 SSMS 经典浅色两套主题</span></li>
       </ul>
     </a>
   </div>
 
   <div class="note">
-    <b>必须通过本地服务器访问，不能直接双击打开 HTML 文件。</b><br>
-    浏览器要求 WebAssembly 与 IndexedDB 运行在 <code>http://</code> 协议下，<code>file://</code> 会被安全策略拦截。<br><br>
-    启动方式：<br>
-    · <code>npm install</code>（连接 MySQL / PostgreSQL / SQL Server 前必须执行一次）<br>
-    · <code>node server.js</code>（Windows 也可双击 <code>start.bat</code>）<br><br>
-    启动后访问 <code>http://127.0.0.1:8777/app/index.html</code><br><br>
-    <b>关于远程数据库：</b>浏览器无法打开原始 TCP 连接，因此 MySQL / PostgreSQL / SQL Server
-    由 <code>server.js</code> 这个<b>只监听 127.0.0.1 的本地代理</b>代为连接。
-    代理进程的数据库密码不会回传到网页。
+    <b><span data-i18n="home.access_through_the_local_server_do_ba9e36">必须通过本地服务器访问，不能直接双击打开 HTML 文件。</span></b><br>
+    <span data-i18n="home.webassembly_and_indexeddb_require_f637d4">浏览器要求 WebAssembly 与 IndexedDB 运行在</span> <code>http://</code> <span data-i18n="home.message_e6a974">协议下，</span><code>file://</code> <span data-i18n="home.is_blocked_by_browser_security_policies_a06f3d">会被安全策略拦截。</span><br><br>
+    <span data-i18n="home.start_the_server_0c0425">启动方式：</span><br>
+    · <code>npm install</code><span data-i18n="home.required_once_before_connecting_to_mysql_2e5508">（连接 MySQL / PostgreSQL / SQL Server 前必须执行一次）</span><br>
+    · <code>node server.js</code><span data-i18n="home.on_windows_you_can_also_double_122e27">（Windows 也可双击</span> <code>start.bat</code>）<br><br>
+    <span data-i18n="home.then_open_761eb0">启动后访问</span> <code>http://127.0.0.1:8777/app/index.html</code><br><br>
+    <b><span data-i18n="home.remote_databases_762e8f">关于远程数据库：</span></b><span data-i18n="home.browsers_cannot_open_raw_tcp_connections_52ea7c">浏览器无法打开原始 TCP 连接，因此 MySQL / PostgreSQL / SQL Server
+    由</span> <code>server.js</code> <span data-i18n="home.as_a_979e2b">这个</span><b><span data-i18n="home.local_proxy_listening_only_on_44472c">只监听 127.0.0.1 的本地代理</span></b><span data-i18n="home.database_passwords_are_never_sent_back_5470be">代为连接。
+    代理进程的数据库密码不会回传到网页。</span>
   </div>
 
   <footer>
-    浏览器内 SQLite 的数据保存在本机 IndexedDB，不上传任何服务器；<br>
-    远程数据库的连接由本地代理进程转发，服务不对局域网暴露。<br>
-    可随时通过「文件 → 导出数据库」把浏览器内的数据带走。
+    <span data-i18n="home.browser_sqlite_data_is_stored_locally_e6471e">浏览器内 SQLite 的数据保存在本机 IndexedDB，不上传任何服务器；</span><br>
+    <span data-i18n="home.remote_connections_go_through_the_local_127119">远程数据库的连接由本地代理进程转发，服务不对局域网暴露。</span><br>
+    <span data-i18n="home.export_your_browser_database_at_any_a86b2f">可随时通过「文件 → 导出数据库」把浏览器内的数据带走。</span>
   </footer>
 </div>
+<script src="app/js/locales/zh-CN.js"></script>
+<script src="app/js/locales/zh-TW.js"></script>
+<script src="app/js/locales/en.js"></script>
+<script src="app/js/i18n.js"></script>
 </body>
 </html>

@@ -58,8 +58,8 @@ async function fixture(test) {
         const d = { id: 'd' + (state.docs.length + 1), sql };
         state.docs.push(d); state.activeDocId = d.id; editor.value = sql; return d;
       },
-      $: () => ({ style: {} }), requestAnimationFrame: f => f(), setTimeout: noop,
-      toast: text => messages.push(text), status: noop, renderResult: noop, renderTree: noop,
+      $: () => ({ style: {}, dataset: {} }), requestAnimationFrame: f => f(), setTimeout: noop,
+      toast: text => messages.push(String(text)), status: noop, renderResult: noop, renderTree: noop,
       updateStatus: noop, updateDbSwitcher: noop, esc: String, busy: noop,
       refreshConnSchema: async () => {}, persistConn: async () => {},
       S: { quoteIdentFor: n => '"' + n.replace(/"/g, '""') + '"' },
@@ -77,6 +77,8 @@ async function fixture(test) {
     };
     context.newDoc(editor.value);
     vm.createContext(context);
+    for (const file of ['locales/zh-CN.js', 'i18n.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../app/js', file), 'utf8'), context);
+    context.I = context.SqlToolI18n;
     vm.runInContext(code, context);
     const d = context.doc(), a = state.conns[0], b = state.conns[1];
     function prepare() { d.pendingEdit = { table: 'items', pkCols: ['id'] }; }
@@ -159,7 +161,7 @@ async function test(name, fn) { await fixture(fn); passed++; console.log('通过
     x.b.engine.exec = async (...args) => { await closedGate.promise; return exec(...args); };
     const closingQuery = x.context.runQuery(); x.state.conns.length = 0;
     closedGate.resolve(); await closingQuery;
-    assert.equal(x.d.result, null); assert.match(x.d.message, /连接已关闭/);
+    assert.equal(x.d.result, null); assert.match(String(x.d.message), /连接已关闭/);
   });
   await test('确认框打开后结果变化，拒绝旧删除请求', async x => {
     x.prepare(); await x.context.runQuery(); await x.context.deleteSelectedRows();

@@ -4,6 +4,7 @@
  * ============================================================ */
 (function () {
   'use strict';
+  const I = window.SqlToolI18n;
 
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -44,7 +45,7 @@
   };
   function ico(name, size) {
     size = size || 15;
-    return '<svg class="ico" viewBox="0 0 16 16" width="' + size + '" height="' + size + '">' + (IC[name] || IC.folder) + '</svg>';
+    return I.join(['<svg class="ico" viewBox="0 0 16 16" width="', size, '" height="', size, '">', IC[name] || IC.folder, '</svg>']);
   }
 
   /* ==========================================================
@@ -53,7 +54,7 @@
   let toastTimer = null;
   function toast(msg, isErr) {
     const el = $('#toast');
-    el.textContent = msg;
+    I.text(el, msg);
     el.classList.toggle('err', !!isErr);
     el.classList.add('show');
     clearTimeout(toastTimer);
@@ -62,24 +63,24 @@
   function busy(show, title, sub) {
     const o = $('#overlay');
     if (show) {
-      $('#ovT').textContent = title || '处理中…';
-      $('#ovS').textContent = sub || '';
+      I.text($('#ovT'), title || I.t("app.working_d3d211"));
+      I.text($('#ovS'), sub || '');
       o.classList.add('show');
     } else o.classList.remove('show');
   }
-  function status(msg) { $('#sbStatus').textContent = msg; }
+  function status(msg) { I.text($('#sbStatus'), msg); }
 
   const modalStack = [];
   function openModal(title, bodyHtml, footHtml, onOk, wide) {
     const m = document.createElement('div');
     m.className = 'mask show';
-    m.innerHTML =
-      '<div class="modal' + (wide ? ' wide' : '') + '">' +
-        '<div class="m-head">' + title + '<span class="m-x">✕</span></div>' +
-        '<div class="m-body">' + bodyHtml + '</div>' +
-        '<div class="m-foot">' + (footHtml || '<button class="btn primary" data-ok>确定</button><button class="btn" data-cancel>取消</button>') + '</div>' +
-      '</div>';
+    I.html(m, I.join(['<div class="modal', wide ? ' wide' : '', '">', '<div class="m-head">', title, '<span class="m-x">✕</span></div>', '<div class="m-body">', bodyHtml, '</div>', '<div class="m-foot">', footHtml || I.t("app.ok_cancel_c42010"), '</div>', '</div>']));
     document.body.appendChild(m);
+    const language = document.querySelector('[data-language-select]').cloneNode(true);
+    language.value = I.locale;
+    I.attr(language, 'aria-label', I.t('app.language'));
+    language.addEventListener('change', () => I.setLocale(language.value));
+    m.querySelector('.m-head').insertBefore(language, m.querySelector('.m-x'));
     modalStack.push(m);
     const close = () => { m.remove(); const i = modalStack.indexOf(m); if (i >= 0) modalStack.splice(i, 1); };
     m.addEventListener('click', e => {
@@ -111,8 +112,7 @@
     'LAST_INSERT_ROWID CHANGES TOTAL_CHANGES SQLITE_VERSION CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP').split(/\s+/));
 
   // 同时转义引号：esc 也用于 data-* / title 等属性值，列名、库名里的引号不能逃逸出属性
-  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const esc = I.escape;
 
   function highlight(code) {
     let out = '', i = 0;
@@ -234,7 +234,7 @@
         });
         state.conns.push(c);
       } catch (e) {
-        console.warn('恢复连接失败', k, e);
+        console.warn(I.t("app.failed_to_restore_connections_cd3fd4"), k, e);
       }
     }
     if (state.conns.length && !state.activeConnId) state.activeConnId = state.conns[0].id;
@@ -247,11 +247,10 @@
   let nodeSeq = 0;
 
   function renderTree() {
-    treeEl.innerHTML = '';
+    I.html(treeEl, '');
     nodeSeq = 0;
     if (!state.conns.length) {
-      treeEl.innerHTML = '<div class="tree-empty">尚未建立任何连接。<br>点击工具栏 <b>新建连接</b> 或菜单「文件 → 新建连接」开始。<br><br>' +
-        '<span style="opacity:.7">引擎在浏览器内以 WebAssembly 运行，无需安装任何数据库服务。</span></div>';
+      I.html(treeEl, I.t("app.no_connections_yet_click_new_connection_742228"));
       return;
     }
     const ul = document.createElement('ul');
@@ -269,11 +268,7 @@
     row.style.paddingLeft = '6px';
     row.dataset.name = c.name;
     row.dataset.type = 'conn';
-    row.innerHTML =
-      '<span class="caret open">▶</span>' +
-      '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + IC.server + '</svg>' +
-      '<span class="label">' + esc(c.name) + '</span>' +
-      '<span class="badge">' + (c.engineKind === 'duckdb' ? 'DuckDB' : 'SQLite') + '</span>';
+    I.html(row, I.join(['<span class="caret open">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', IC.server, '</svg>', '<span class="label">', esc(c.name), '</span>', '<span class="badge">', c.engineKind === 'duckdb' ? 'DuckDB' : 'SQLite', '</span>']));
     row._connId = c.id;
     li.appendChild(row);
 
@@ -301,10 +296,7 @@
         row.style.paddingLeft = '20px';
         row.dataset.name = db;
         row.dataset.type = 'database';
-        row.innerHTML = '<span class="caret">▶</span>' +
-          '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + IC.db + '</svg>' +
-          '<span class="label">' + esc(db) + '</span>' +
-          (db === cur ? '<span class="badge">当前</span>' : '');
+        I.html(row, I.join(['<span class="caret">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', IC.db, '</svg>', '<span class="label">', esc(db), '</span>', db === cur ? I.t("app.current_caf22d") : '']));
         row._dbName = db;
         row._connId = c.id;
         row._lazyDb = true;
@@ -321,38 +313,38 @@
 
     /* ---- 单库：表 / 视图 / 索引 / 触发器 文件夹 ---- */
     if (c.attached && c.attached.length > 1) {
-      ul.appendChild(folderNode('数据库 (' + c.attached.length + ')', 'db',
-        c.attached.map(a => ({ type: 'leaf', name: a.name, icon: 'db', badge: a.file ? a.file.split(/[\\/]/).pop() : '(内存)' })), true));
+      ul.appendChild(folderNode(I.t("app.databases_51610f", { p0: c.attached.length }), 'db',
+        c.attached.map(a => ({ type: 'leaf', name: a.name, icon: 'db', badge: a.file ? a.file.split(/[\\/]/).pop() : I.t("app.memory_a7b37d") })), true));
     }
     if (sc.tables && sc.tables.length) {
       const dbName = sc.database || (isRemote ? c.engine.currentDatabase : null);
-      ul.appendChild(tableFolder('表 (' + sc.tables.length + ')', sc.tables, c, 20, true, dbName));
+      ul.appendChild(tableFolder(I.t("app.tables_dcf714", { p0: sc.tables.length }), sc.tables, c, 20, true, dbName));
     }
     if (sc.views && sc.views.length) {
       const dbName = sc.database || (isRemote ? c.engine.currentDatabase : null);
-      ul.appendChild(tableFolder('视图 (' + sc.views.length + ')', sc.views, c, 20, false, dbName));
+      ul.appendChild(tableFolder(I.t("app.views_dffe69", { p0: sc.views.length }), sc.views, c, 20, false, dbName));
     }
     if (sc.indexes && sc.indexes.length) {
       const kids = sc.indexes.map(x => ({ type: 'index', name: x.name, icon: 'index', badge: x.table, _obj: x }));
-      ul.appendChild(folderNode('索引 (' + sc.indexes.length + ')', 'folder', kids, false));
+      ul.appendChild(folderNode(I.t("app.indexes_79290d", { p0: sc.indexes.length }), 'folder', kids, false));
     }
     if (sc.triggers && sc.triggers.length) {
       const kids = sc.triggers.map(x => ({ type: 'trigger', name: x.name, icon: 'trigger', badge: x.table, _obj: x }));
-      ul.appendChild(folderNode('触发器 (' + sc.triggers.length + ')', 'folder', kids, false));
+      ul.appendChild(folderNode(I.t("app.triggers_35bd5c", { p0: sc.triggers.length }), 'folder', kids, false));
     }
     /* ---- 存储过程 / 函数（SQLite 没有这类对象，数组为空即不显示） ---- */
     const rdb = sc.database || (isRemote ? c.engine.currentDatabase : null);
     if (sc.procedures && sc.procedures.length) {
-      ul.appendChild(folderNode('存储过程 (' + sc.procedures.length + ')', 'proc',
+      ul.appendChild(folderNode(I.t("app.procedures_4361e9", { p0: sc.procedures.length }), 'proc',
         sc.procedures.map(x => routineLeaf(x, 'procedure', rdb, 'proc')), false));
     }
     if (sc.functions && sc.functions.length) {
-      ul.appendChild(folderNode('函数 (' + sc.functions.length + ')', 'func',
+      ul.appendChild(folderNode(I.t("app.functions_878522", { p0: sc.functions.length }), 'func',
         sc.functions.map(x => routineLeaf(x, 'function', rdb, 'func')), false));
     }
     if (!ul.children.length) {
       const li = document.createElement('li');
-      li.innerHTML = '<div class="node" style="padding-left:20px;opacity:.5"><span class="caret leaf">▶</span><span class="label">（空）</span></div>';
+      I.html(li, I.t("app.empty_fca66c"));
       ul.appendChild(li);
     }
   }
@@ -369,11 +361,9 @@
     const row = document.createElement('div');
     row.className = 'node';
     row.style.paddingLeft = indent + 'px';
-    row.dataset.name = title.replace(/\s*\(.*\)$/, '');
+    I.attr(row, 'data-name', () => String(title).replace(/\s*\(.*\)$/, ''));
     row.dataset.type = 'folder';
-    row.innerHTML = '<span class="caret' + (expanded ? ' open' : '') + '">▶</span>' +
-      '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + IC.folder + '</svg>' +
-      '<span class="label">' + esc(title) + '</span>';
+    I.html(row, I.join(['<span class="caret', expanded ? ' open' : '', '">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', IC.folder, '</svg>', '<span class="label">', esc(title), '</span>']));
     li.appendChild(row);
     const sub = document.createElement('ul');
     sub.className = 'children' + (expanded ? '' : ' collapsed');
@@ -394,12 +384,9 @@
     row.dataset.type = item.type;
     let badge = '';
     if (item.rowCount !== null && item.rowCount !== undefined) {
-      badge = (item.rowCountApprox ? '~' : '') + item.rowCount + ' 行';
+      badge = I.t("app.rows_b1cbf1", { p0: item.rowCountApprox ? '~' : '', p1: item.rowCount });
     }
-    row.innerHTML = '<span class="caret">▶</span>' +
-      '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + (item.type === 'view' ? IC.view : IC.table) + '</svg>' +
-      '<span class="label">' + esc(item.name) + '</span>' +
-      (badge ? '<span class="badge">' + badge + '</span>' : '');
+    I.html(row, I.join(['<span class="caret">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', item.type === 'view' ? IC.view : IC.table, '</svg>', '<span class="label">', esc(item.name), '</span>', badge ? I.join(['<span class="badge">', badge, '</span>']) : '']));
     row._k = { type: item.type, name: item.name, _table: item, _db: database };
     row._connId = c.id;
     row._colIndent = indent + 14;
@@ -422,7 +409,7 @@
   }
 
   function fillColumnNodes(ul, columns, indent) {
-    ul.innerHTML = '';
+    I.html(ul, '');
     columns.forEach(col => {
       const cl = document.createElement('li');
       const cr = document.createElement('div');
@@ -430,17 +417,12 @@
       cr.style.paddingLeft = indent + 'px';
       cr.dataset.name = col.name;
       cr.dataset.type = 'column';
-      cr.innerHTML = '<span class="caret leaf">▶</span>' +
-        '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + (col.pk ? IC.colpk : IC.col) + '</svg>' +
-        '<span class="label">' + esc(col.name) + '</span>' +
-        (col.pk ? '<span class="pk" style="color:var(--amber);font-size:10px">PK</span>' : '') +
-        (col.auto ? '<span class="pk" style="color:var(--accent);font-size:10px">AUTO</span>' : '') +
-        '<span class="coltype">' + esc(col.type) + (col.notnull ? ' NOT NULL' : '') + '</span>';
+      I.html(cr, I.join(['<span class="caret leaf">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', col.pk ? IC.colpk : IC.col, '</svg>', '<span class="label">', esc(col.name), '</span>', col.pk ? '<span class="pk" style="color:var(--amber);font-size:10px">PK</span>' : '', col.auto ? '<span class="pk" style="color:var(--accent);font-size:10px">AUTO</span>' : '', '<span class="coltype">', esc(col.type), col.notnull ? ' NOT NULL' : '', '</span>']));
       cl.appendChild(cr);
       ul.appendChild(cl);
     });
     if (!columns.length) {
-      ul.innerHTML = '<li><div class="node" style="padding-left:' + indent + 'px;opacity:.5"><span class="caret leaf">▶</span><span class="label">（无列信息）</span></div></li>';
+      I.html(ul, I.t("app.no_column_information_c23174", { p0: indent }));
     }
   }
 
@@ -448,30 +430,30 @@
   async function loadDatabaseNode(c, row) {
     if (row._loaded) return;
     row._loaded = true;
-    row._ul.innerHTML = '<li><div class="node" style="padding-left:34px;opacity:.6"><span class="caret leaf">▶</span><span class="label">加载中…</span></div></li>';
+    I.html(row._ul, I.t("app.loading_20d15a"));
     try {
       const sc = await c.engine.schema(row._dbName);
       if (!c.schemas) c.schemas = {};
       c.schemas[row._dbName] = sc;
-      row._ul.innerHTML = '';
+      I.html(row._ul, '');
       const hasAny = (sc.tables && sc.tables.length) || (sc.views && sc.views.length) ||
         (sc.procedures && sc.procedures.length) || (sc.functions && sc.functions.length);
-      if (sc.tables && sc.tables.length) row._ul.appendChild(tableFolder('表 (' + sc.tables.length + ')', sc.tables, c, 34, true, row._dbName));
-      if (sc.views && sc.views.length) row._ul.appendChild(tableFolder('视图 (' + sc.views.length + ')', sc.views, c, 34, false, row._dbName));
+      if (sc.tables && sc.tables.length) row._ul.appendChild(tableFolder(I.t("app.tables_dcf714", { p0: sc.tables.length }), sc.tables, c, 34, true, row._dbName));
+      if (sc.views && sc.views.length) row._ul.appendChild(tableFolder(I.t("app.views_dffe69", { p0: sc.views.length }), sc.views, c, 34, false, row._dbName));
       if (sc.procedures && sc.procedures.length) {
-        row._ul.appendChild(folderNode('存储过程 (' + sc.procedures.length + ')', 'proc',
+        row._ul.appendChild(folderNode(I.t("app.procedures_4361e9", { p0: sc.procedures.length }), 'proc',
           sc.procedures.map(x => routineLeaf(x, 'procedure', row._dbName, 'proc')), false, 34));
       }
       if (sc.functions && sc.functions.length) {
-        row._ul.appendChild(folderNode('函数 (' + sc.functions.length + ')', 'func',
+        row._ul.appendChild(folderNode(I.t("app.functions_878522", { p0: sc.functions.length }), 'func',
           sc.functions.map(x => routineLeaf(x, 'function', row._dbName, 'func')), false, 34));
       }
       if (!hasAny) {
-        row._ul.innerHTML = '<li><div class="node" style="padding-left:34px;opacity:.5"><span class="caret leaf">▶</span><span class="label">（空库）</span></div></li>';
+        I.html(row._ul, I.t("app.empty_database_12752b"));
       }
     } catch (e) {
       row._loaded = false;
-      row._ul.innerHTML = '<li><div class="node" style="padding-left:34px"><span class="caret leaf">▶</span><span class="label" style="color:var(--red)">' + esc(e.message) + '</span></div></li>';
+      I.html(row._ul, I.join(['<li><div class="node" style="padding-left:34px"><span class="caret leaf">▶</span><span class="label" style="color:var(--red)">', esc(I.detail(e)), '</span></div></li>']));
     }
   }
 
@@ -479,14 +461,14 @@
   async function loadTableColumns(c, row) {
     if (row._colsLoaded) return;
     row._colsLoaded = true;
-    row._ul.innerHTML = '<li><div class="node" style="padding-left:' + row._colIndent + 'px;opacity:.6"><span class="caret leaf">▶</span><span class="label">加载中…</span></div></li>';
+    I.html(row._ul, I.t("app.loading_8a8efa", { p0: row._colIndent }));
     try {
       const cols = await c.engine.columns(row._db, row._k.name);
       row._k._table.columns = cols;
       fillColumnNodes(row._ul, cols, row._colIndent);
     } catch (e) {
       row._colsLoaded = false;
-      row._ul.innerHTML = '<li><div class="node" style="padding-left:' + row._colIndent + 'px"><span class="caret leaf">▶</span><span class="label" style="color:var(--red)">' + esc(e.message) + '</span></div></li>';
+      I.html(row._ul, I.join(['<li><div class="node" style="padding-left:', row._colIndent, 'px"><span class="caret leaf">▶</span><span class="label" style="color:var(--red)">', esc(I.detail(e)), '</span></div></li>']));
     }
   }
 
@@ -496,11 +478,9 @@
     const row = document.createElement('div');
     row.className = 'node';
     row.style.paddingLeft = indent + 'px';
-    row.dataset.name = title.replace(/\s*\(.*\)$/, '');
+    I.attr(row, 'data-name', () => String(title).replace(/\s*\(.*\)$/, ''));
     row.dataset.type = 'folder';
-    row.innerHTML = '<span class="caret' + (expanded ? ' open' : '') + '">▶</span>' +
-      '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + (IC[icon] || IC.folder) + '</svg>' +
-      '<span class="label">' + esc(title) + '</span>';
+    I.html(row, I.join(['<span class="caret', expanded ? ' open' : '', '">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', IC[icon] || IC.folder, '</svg>', '<span class="label">', esc(title), '</span>']));
     li.appendChild(row);
 
     const sub = document.createElement('ul');
@@ -519,10 +499,7 @@
     row.style.paddingLeft = indent + 'px';
     row.dataset.name = k.name;
     row.dataset.type = k.type;
-    row.innerHTML = '<span class="caret leaf">▶</span>' +
-      '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">' + (IC[k.icon] || IC.col) + '</svg>' +
-      '<span class="label">' + esc(k.name) + '</span>' +
-      (k.badge ? '<span class="badge">' + esc(k.badge) + '</span>' : '');
+    I.html(row, I.join(['<span class="caret leaf">▶</span>', '<svg class="ico" viewBox="0 0 16 16" width="15" height="15">', IC[k.icon] || IC.col, '</svg>', '<span class="label">', esc(k.name), '</span>', k.badge ? I.join(['<span class="badge">', esc(k.badge), '</span>']) : '']));
     row._k = k;
     li.appendChild(row);
     return li;
@@ -543,10 +520,10 @@
   /** 给存储过程 / 函数一个短标签（SQL Server 的 type_desc 太长，不适合塞进树） */
   function routineBadge(item) {
     const t = String((item && item.typeDesc) || '');
-    if (/AGGREGATE/i.test(t)) return '聚合函数';
-    if (/INLINE/i.test(t)) return '内联表值函数';
-    if (/TABLE/i.test(t)) return '表值函数';
-    if (/SCALAR/i.test(t)) return '标量函数';
+    if (/AGGREGATE/i.test(t)) return I.t("app.aggregate_function_3d9018");
+    if (/INLINE/i.test(t)) return I.t("app.inline_table_valued_function_df5d0f");
+    if (/TABLE/i.test(t)) return I.t("app.table_valued_function_34145c");
+    if (/SCALAR/i.test(t)) return I.t("app.scalar_function_61bb4c");
     if (/PROCEDURE/i.test(t)) return '';       // 存储过程不必再标一遍
     const r = String((item && item.ret) || '');
     return r.length > 16 ? r.slice(0, 16) + '…' : r;
@@ -594,8 +571,8 @@
         c.engine.setDatabase(row._dbName);
         if (c.schema) c.schema.database = row._dbName;
         updateStatus(); updateDbSwitcher();
-        status('当前数据库已切换为 ' + row._dbName);
-        toast('当前数据库：' + row._dbName);
+        status(I.t("app.current_database_changed_to_d98dcb", { p0: row._dbName }));
+        toast(I.t("app.current_database_6bfe06", { p0: row._dbName }));
         renderTree();
         return;
       }
@@ -658,12 +635,10 @@
   });
 
   function mi(icon, text, action, extra, dim) {
-    return '<div class="c-item' + (dim ? ' dim' : '') + '" data-action="' + action + '">' +
-      '<span class="c-ico"><svg viewBox="0 0 16 16" width="14" height="14">' + (IC[icon] || IC.folder) + '</svg></span>' +
-      text + (extra || '') + '</div>';
+    return I.join(['<div class="c-item', dim ? ' dim' : '', '" data-action="', action, '">', '<span class="c-ico"><svg viewBox="0 0 16 16" width="14" height="14">', IC[icon] || IC.folder, '</svg></span>', text, extra || '', '</div>']);
   }
   function showMenu(x, y, html) {
-    ctxEl.innerHTML = html;
+    I.html(ctxEl, html);
     ctxEl.classList.add('show');
     const w = ctxEl.offsetWidth, h = ctxEl.offsetHeight;
     ctxEl.style.left = Math.min(x, innerWidth - w - 6) + 'px';
@@ -676,50 +651,21 @@
   function showConnCtx(x, y) {
     const c = state.conns.find(v => v.id === ctxData.id);
     showMenu(x, y,
-      '<div class="c-title">' + esc(c.name) + '</div>' +
-      mi('query', '新建查询', 'new-query') +
-      mi('table', '刷新', 'refresh') +
-      '<div class="c-sep"></div>' +
-      mi('db', '导出数据库为 .db 文件', 'export-db') +
-      mi('table', '执行 SQL 脚本文件…', 'run-script') +
-      '<div class="c-sep"></div>' +
-      mi('folder', '关闭连接', 'close-conn') +
-      mi('folder', '删除连接及其本地数据', 'drop-conn'));
+      I.join(['<div class="c-title">', esc(c.name), '</div>', mi('query', I.t("app.new_query_342c24"), 'new-query'), mi('table', I.t("app.refresh_aee887"), 'refresh'), '<div class="c-sep"></div>', mi('db', I.t("app.export_database_as_db_26aac5"), 'export-db'), mi('table', I.t("app.run_sql_script_file_0314c4"), 'run-script'), '<div class="c-sep"></div>', mi('folder', I.t("app.close_connection_62d018"), 'close-conn'), mi('folder', I.t("app.delete_connection_and_local_data_92ad99"), 'drop-conn')]));
   }
   function showTableCtx(x, y, name) {
     showMenu(x, y,
-      '<div class="c-title">' + esc(name) + '</div>' +
-      mi('query', '选择前 1000 行', 'top1000') +
-      mi('query', '统计精确行数', 'count-rows') +
-      mi('table', '编辑数据', 'edit-data') +
-      '<div class="c-sep"></div>' +
-      mi('query', '生成 SELECT 脚本', 'script-select') +
-      mi('table', '生成 CREATE 脚本', 'script-create') +
-      mi('view', '生成 INSERT 脚本', 'script-insert') +
-      '<div class="c-sep"></div>' +
-      mi('table', '查看建表 DDL', 'show-ddl') +
-      mi('table', '导入 CSV 到此表…', 'import-csv-table') +
-      mi('db', '导出表数据为 CSV', 'export-csv-table') +
-      '<div class="c-sep"></div>' +
-      mi('folder', '清空表 (DELETE)', 'truncate') +
-      mi('folder', '删除表 (DROP)', 'drop-table'));
+      I.join(['<div class="c-title">', esc(name), '</div>', mi('query', I.t("app.select_top_rows_573f9e"), 'top1000'), mi('query', I.t("app.count_exact_rows_cb3e18"), 'count-rows'), mi('table', I.t("app.edit_data_6fa7a4"), 'edit-data'), '<div class="c-sep"></div>', mi('query', I.t("app.generate_select_script_9c5f86"), 'script-select'), mi('table', I.t("app.generate_create_script_bc7982"), 'script-create'), mi('view', I.t("app.generate_insert_script_5205be"), 'script-insert'), '<div class="c-sep"></div>', mi('table', I.t("app.view_table_ddl_6643c7"), 'show-ddl'), mi('table', I.t("app.import_csv_into_this_table_72adb9"), 'import-csv-table'), mi('db', I.t("app.export_table_as_csv_c0b427"), 'export-csv-table'), '<div class="c-sep"></div>', mi('folder', I.t("app.clear_table_delete_883b80"), 'truncate'), mi('folder', I.t("app.drop_table_drop_1e6602"), 'drop-table')]));
   }
   function showSimpleCtx(x, y) {
     showMenu(x, y,
-      '<div class="c-title">' + esc((ctxData && ctxData.name) || '') + '</div>' +
-      mi('query', '新建查询', 'new-query') +
-      mi('table', '刷新', 'refresh'));
+      I.join(['<div class="c-title">', esc((ctxData && ctxData.name) || ''), '</div>', mi('query', I.t("app.new_query_342c24"), 'new-query'), mi('table', I.t("app.refresh_aee887"), 'refresh')]));
   }
   /** 存储过程 / 函数的右键菜单（双击也能看定义，但双击不可发现） */
   function showRoutineCtx(x, y, k) {
     const it = k._obj || {};
     showMenu(x, y,
-      '<div class="c-title">' + esc(it.label || it.name || '') + '</div>' +
-      mi(k.type === 'procedure' ? 'proc' : 'func', '查看定义', 'routine-ddl') +
-      mi('query', '生成调用脚本', 'routine-call') +
-      '<div class="c-sep"></div>' +
-      mi('query', '新建查询', 'new-query') +
-      mi('table', '刷新', 'refresh'));
+      I.join(['<div class="c-title">', esc(it.label || it.name || ''), '</div>', mi(k.type === 'procedure' ? 'proc' : 'func', I.t("app.view_definition_23710f"), 'routine-ddl'), mi('query', I.t("app.generate_call_script_fa97d6"), 'routine-call'), '<div class="c-sep"></div>', mi('query', I.t("app.new_query_342c24"), 'new-query'), mi('table', I.t("app.refresh_aee887"), 'refresh')]));
   }
 
   ctxEl.addEventListener('click', async e => {
@@ -738,8 +684,8 @@
     if (c.schema) c.schema.database = db;
     updateStatus(); updateDbSwitcher();
     try { await doRefresh(true); } catch (e) { /* ignore */ }
-    status('当前数据库：' + db);
-    toast('已切换到 ' + db);
+    status(I.t("app.current_database_6bfe06", { p0: db }));
+    toast(I.t("app.switched_to_a1b61d", { p0: db }));
   }
 
   /** 按当前连接方言引用标识符 */
@@ -773,8 +719,8 @@
   let lastExecError = '';
   async function execOrToast(sql, label, db) {
     const r = await execSql(sql, db ? { database: db } : undefined);
-    if (!r) { lastExecError = label + '失败：没有可用连接'; return false; }
-    if (r.error) { lastExecError = label + '失败：' + r.error; toast(lastExecError, true); return false; }
+    if (!r) { lastExecError = I.t("app.failed_no_connection_available_131a73", { p0: label }); return false; }
+    if (r.error) { lastExecError = I.t("app.failed_afd956", { p0: label, p1: r.error }); toast(lastExecError, true); return false; }
     return true;
   }
 
@@ -790,43 +736,43 @@
       case 'top1000': openTableQuery(d.name, { database: d._db }); break;
       case 'count-rows': {
         const result = await execSql('SELECT COUNT(*) AS row_count FROM ' + qid(d.name) + ';', { database: db });
-        if (!result || result.error) toast((result && result.error) || '统计失败', true);
-        else toast(d.name + '：' + result.sets[0].values[0][0] + ' 行');
+        if (!result || result.error) toast((result && result.error) || I.t("app.row_count_failed_bf92c7"), true);
+        else toast(I.t("app.rows_18da38", { p0: d.name, p1: result.sets[0].values[0][0] }));
         break;
       }
       case 'edit-data': openTableQuery(d.name, { database: d._db }); break;
       case 'show-ddl': showDdl(d._table && d._table.ddl, d.name); break;
       case 'script-select': insertQuery(selectTopSql(d.name, 100)); break;
-      case 'script-create': showDdl(d._table && d._table.ddl || '-- 无 DDL', d.name + ' — CREATE 脚本', true); break;
+      case 'script-create': showDdl(d._table && d._table.ddl || '-- 无 DDL', I.t("app.create_script_a8a3c2", { p0: d.name }), true); break;
       case 'script-insert': await scriptInsert(d.name, db); break;
       case 'export-db': await exportDb(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
       case 'run-script': pickScriptFile(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
       case 'import-csv-table': pickCsvFile(d.name, db); break;
       case 'export-csv-table': await exportTableCsv(d.name, db); break;
-      case 'truncate': await confirmThen('清空表', '将执行 DELETE FROM ' + esc(qid(d.name)) + '，删除所有行（可回滚前请确认）。', async () => {
+      case 'truncate': await confirmThen(I.t("app.clear_table_0a1b2b"), I.t("app.delete_from_will_delete_all_rows_2f0232", { p0: esc(qid(d.name)) }), async () => {
         // 先刷新再提示：doRefresh 自己会弹「已刷新」，放在后面会盖掉结果提示
-        const okDel = await execOrToast('DELETE FROM ' + qid(d.name) + ';', '清空表', db);
+        const okDel = await execOrToast('DELETE FROM ' + qid(d.name) + ';', I.t("app.clear_table_0a1b2b"), db);
         if (okDel) await persistConn(conn());
         await doRefresh();
-        if (okDel) toast('已清空 ' + d.name);
+        if (okDel) toast(I.t("app.cleared_e5092f", { p0: d.name }));
         else toast(lastExecError, true);
       }); break;
-      case 'drop-table': await confirmThen('删除表', '将执行 DROP TABLE ' + esc(qid(d.name)) + '，该操作不可撤销！', async () => {
-        const okDrop = await execOrToast('DROP TABLE ' + qid(d.name) + ';', '删除表', db);
+      case 'drop-table': await confirmThen(I.t("app.drop_table_d54572"), I.t("app.drop_table_will_be_executed_this_1adebb", { p0: esc(qid(d.name)) }), async () => {
+        const okDrop = await execOrToast('DROP TABLE ' + qid(d.name) + ';', I.t("app.drop_table_d54572"), db);
         if (okDrop) await persistConn(conn());
         await doRefresh();
-        if (okDrop) toast('已删除 ' + d.name);
+        if (okDrop) toast(I.t("app.deleted_0bafa8", { p0: d.name }));
         else toast(lastExecError, true);
       }, true); break;
-      case 'close-conn': await closeConnection(d.id, false); toast('连接已关闭'); break;
-      case 'drop-conn': await confirmThen('删除连接', '将关闭连接并删除其保存在浏览器本地的数据库文件，不可恢复。', async () => {
-        await closeConnection(d.id, true); toast('连接已删除');
+      case 'close-conn': await closeConnection(d.id, false); toast(I.t("app.connection_closed_30f12a")); break;
+      case 'drop-conn': await confirmThen(I.t("app.delete_connection_92e113"), I.t("app.this_closes_the_connection_and_deletes_1fbde0"), async () => {
+        await closeConnection(d.id, true); toast(I.t("app.connection_deleted_bcb4b0"));
       }, true); break;
       /* 结果网格上的增 / 删 / 复制（作用于当前查询窗口） */
       case 'row-add': await addRowDialog(); break;
       case 'row-del': await deleteSelectedRows(); break;
       case 'row-copy': copySelectedRows(); break;
-      default: toast('操作：' + a);
+      default: toast(I.t("app.action_b1772b", { p0: a }));
     }
   }
 
@@ -867,15 +813,12 @@
   }
   function renderDocs() {
     const tabs = $('#docTabs');
-    tabs.innerHTML = '';
+    I.html(tabs, '');
     state.docs.forEach(d => {
       const t = document.createElement('div');
       t.className = 'doc-tab' + (d.id === state.activeDocId ? ' active' : '');
       t.dataset.id = d.id;
-      t.innerHTML = '<svg class="t-ico" viewBox="0 0 16 16">' + IC.query + '</svg>' +
-        '<span class="t-name">' + esc(d.title) + '</span>' +
-        (d.dirty ? '<span class="dirty"></span>' : '') +
-        '<span class="t-close">✕</span>';
+      I.html(t, I.join(['<svg class="t-ico" viewBox="0 0 16 16">', IC.query, '</svg>', '<span class="t-name">', esc(d.title), '</span>', d.dirty ? '<span class="dirty"></span>' : '', '<span class="t-close">✕</span>']));
       tabs.appendChild(t);
     });
   }
@@ -908,37 +851,37 @@
       selection: end > start,
       target: () => {
         const c = conn(), database = currentDbArg(c);
-        return { label: c ? c.name + (database ? ' / ' + database : '') : '未连接', dialect: c ? c.engine.dialect : 'all' };
+        return { label: c ? c.name + (database ? ' / ' + database : '') : I.t("app.not_connected_3d5257"), dialect: c ? c.engine.dialect : 'all' };
       },
       open: template => {
         const d = newDoc(template.sql, template.name + '.sql');
         d.dirty = true; renderDocs();
-        toast('模板已在新标签页打开');
+        toast(I.t("app.template_opened_in_a_new_tab_394994"));
       },
       insert: template => {
         if (!originalDoc || !state.docs.includes(originalDoc) || doc() !== originalDoc || sqlEl.value !== originalSql) {
-          throw new Error('查询窗口或内容已变化，请重新打开模板库后插入');
+          throw I.error(I.t("app.the_query_tab_or_its_content_859725"));
         }
         sqlEl.setRangeText(template.sql, start, end, 'end');
         originalDoc.sql = sqlEl.value; originalDoc.dirty = true; originalDoc.pendingEdit = null;
         acClose(); renderDocs(); updateEditor(); sqlEl.focus();
-        toast(end > start ? '已替换选中的 SQL' : '模板已插入光标处');
+        toast(end > start ? I.t("app.selected_sql_replaced_6d1f09") : I.t("app.template_inserted_at_cursor_fd0f74"));
       }
     };
   }
 
   function saveSqlTemplate() {
     const d = doc();
-    if (!d) { toast('没有可保存的查询窗口', true); return; }
+    if (!d) { toast(I.t("app.no_query_tab_to_save_6eb90d"), true); return; }
     const start = sqlEl.selectionStart, end = sqlEl.selectionEnd;
     const sql = end > start ? sqlEl.value.slice(start, end) : sqlEl.value;
-    if (!sql.trim()) { toast('请选择或输入要保存的 SQL', true); return; }
+    if (!sql.trim()) { toast(I.t("app.select_or_enter_the_sql_to_3631bd"), true); return; }
     const bridge = templateBridge();
-    S.Templates.saveEditor(bridge, { name: d.title.replace(/\.sql$/i, '').slice(0, 120), sql, dialect: bridge.target().dialect });
+    S.Templates.saveEditor(bridge, { name: String(d.title).replace(/\.sql$/i, '').slice(0, 120), sql, dialect: bridge.target().dialect });
   }
 
   function showDdl(ddl, title, wide) {
-    const text = ddl || '-- 该对象没有可用的 DDL';
+    const text = ddl || I.t('app.noDdl');
     return showDdlAsync(title, () => text, wide);
   }
 
@@ -949,18 +892,18 @@
    */
   function showDdlAsync(title, loader, wide) {
     const m = openModal(esc(title),
-      '<pre class="ddl-pre">-- 正在读取定义…</pre>',
-      '<button class="btn" data-copy>复制</button><button class="btn" data-insert>插入到查询窗口</button><button class="btn primary" data-cancel>关闭</button>',
+      I.t("app.loading_definition_05c067"),
+      I.t("app.copy_insert_into_query_close_5f3b12"),
       null, wide !== false);
     let text = '';
     const put = t => {
-      text = t || '-- 该对象没有可用的定义';
-      m.querySelector('.m-body').innerHTML = '<pre class="ddl-pre">' + esc(text) + '</pre>';
+      text = t || I.t('app.noDefinition');
+      I.html(m.querySelector('.m-body'), I.join(['<pre class="ddl-pre">', esc(text), '</pre>']));
     };
-    m.querySelector('[data-copy]').addEventListener('click', () => { if (!text) return; copyText(text); toast('已复制到剪贴板'); });
-    m.querySelector('[data-insert]').addEventListener('click', () => { if (!text) return; insertQuery(text); m._close(); });
+    m.querySelector('[data-copy]').addEventListener('click', () => { if (!text) return; copyText(I.resolve(text)); toast(I.t("app.copied_to_clipboard_cce28d")); });
+    m.querySelector('[data-insert]').addEventListener('click', () => { if (!text) return; insertQuery(I.resolve(text)); m._close(); });
     Promise.resolve().then(loader).then(put)
-      .catch(e => put('-- 读取失败：' + (e && e.message ? e.message : e)));
+      .catch(e => put(I.t('app.definitionError', { detail: I.detail(e) })));
     return m;
   }
 
@@ -970,13 +913,13 @@
     if (!item) return;
     const label = item.label || item.name;
     if (!c || !c.engine || typeof c.engine.routineDdl !== 'function') {
-      toast('当前引擎不支持查看存储过程 / 函数', true);
+      toast(I.t("app.this_engine_does_not_support_viewing_5cd590"), true);
       return;
     }
-    status('正在读取 ' + label + ' 的定义…');
+    status(I.t("app.loading_the_definition_of_c8b14f", { p0: label }));
     showDdlAsync(label, async () => {
       try { return await c.engine.routineDdl(item, database); }
-      finally { status('就绪'); }
+      finally { status(I.t("app.ready_b073db")); }
     });
   }
 
@@ -1009,11 +952,11 @@
 
   function updateEditor() {
     const code = sqlEl.value;
-    hlEl.innerHTML = highlight(code) + '\n';
+    I.html(hlEl, highlight(code) + '\n');
     const lines = code.split('\n').length;
     let g = '';
-    for (let k = 1; k <= lines; k++) g += '<div class="ln">' + k + '</div>';
-    gutterEl.innerHTML = g;
+    for (let k = 1; k <= lines; k++) g += I.join(['<div class="ln">', k, '</div>']);
+    I.html(gutterEl, g);
     sqlEl.style.height = 'auto';
     sqlEl.style.height = Math.max(sqlEl.scrollHeight, codeScroll.clientHeight) + 'px';
     updatePos();
@@ -1023,7 +966,7 @@
     const before = sqlEl.value.slice(0, pos);
     const line = before.split('\n').length;
     const col = pos - before.lastIndexOf('\n');
-    $('#sbPos').textContent = '行 ' + line + ', 列 ' + col;
+    I.text($('#sbPos'), I.t("app.ln_col_7ed988", { p0: line, p1: col }));
     const lines = gutterEl.children;
     for (let k = 0; k < lines.length; k++) lines[k].classList.toggle('cur', k === line - 1);
     updateRunHint();
@@ -1039,9 +982,9 @@
     const a = sqlEl.selectionStart, b = sqlEl.selectionEnd;
     const has = b > a && sqlEl.value.slice(a, b).trim() !== '';
     btn.classList.toggle('sel', has);
-    btn.title = has ? '执行选中的 SQL (F5) —— 只运行选中的部分' : '执行全部 SQL (F5)';
+    I.attr(btn, 'title', has ? I.t("app.run_selected_sql_f5_only_the_f2a875") : I.t("app.run_all_sql_f5_e269f6"));
     const lb = btn.querySelector('.tb-label');
-    if (lb) lb.textContent = has ? '执行选中' : '执行';
+    if (lb) I.text(lb, has ? I.t("app.run_selection_6344d0") : I.t("app.run_32c8d3"));
   }
   document.addEventListener('selectionchange', () => {
     if (document.activeElement === sqlEl) updateRunHint();
@@ -1092,7 +1035,7 @@
     clearTimeout(acTimer);
     acState = null;
     const el = $('#ac');
-    if (el) { el.classList.remove('show'); el.innerHTML = ''; }
+    if (el) { el.classList.remove('show'); I.html(el, ''); }
   }
 
   /** 当前连接可见的表名 / 列名（含各数据库与 schema 缓存） */
@@ -1212,14 +1155,14 @@
     const inner = document.querySelector('.code-inner');
     if (!inner) return { top: 0, left: 0 };
     const before = sqlEl.value.slice(0, sqlEl.selectionStart);
-    hlEl.innerHTML = highlight(before) + '<span class="ac-mark"></span>';
+    I.html(hlEl, I.join([highlight(before), '<span class="ac-mark"></span>']));
     const mark = hlEl.querySelector('.ac-mark');
     let out = { top: 0, left: 0 };
     if (mark) {
       const a = mark.getBoundingClientRect(), b = inner.getBoundingClientRect();
       out = { top: a.top - b.top, left: a.left - b.left };
     }
-    hlEl.innerHTML = highlight(sqlEl.value) + '\n';
+    I.html(hlEl, highlight(sqlEl.value) + '\n');
     return out;
   }
 
@@ -1260,7 +1203,7 @@
     const low = word.toLowerCase();
     const startsWith = s => String(s).toLowerCase().startsWith(low);
 
-    let items = [], kind = '关键字 / 对象';
+    let items = [], kind = I.t("app.keywords_objects_2c171d");
 
     if (dot) {
       // 「x.」：只给这张表的列。解析不到就什么都不给（宁可空，也不要拿别的表的列凑数）
@@ -1268,10 +1211,10 @@
       const list = (owner && sc.colsByTable[owner]) || [];
       if (!list.length) return null;
       items = list.filter(startsWith).map(n => ({ text: n, type: 'column' }));
-      kind = owner + ' 的列';
+      kind = I.t("app.columns_of_e10aba", { p0: owner });
     } else if (onlyTables) {
       items = sc.tables.filter(startsWith).map(n => ({ text: n, type: 'table' }));
-      kind = '表 / 视图';
+      kind = I.t("app.tables_views_437c9b");
     } else {
       // 语句里已经有 FROM / JOIN 时，列只从这些表里取 ——
       // 否则 WHERE 里会冒出库里任意一张表的列，非常干扰。
@@ -1283,14 +1226,13 @@
       const kw = AC_KEYWORDS.filter(startsWith).map(n => ({ text: n, type: 'keyword' }));
       if (scopedCols.length) {
         items = scopedCols.filter(startsWith).map(n => ({ text: n, type: 'column' })).concat(fn, kw);
-        kind = '本语句表列 · ' + scope.tables.slice(0, 3).join(', ') +
-          (scope.tables.length > 3 ? ' 等 ' + scope.tables.length + ' 张表' : '');
+        kind = I.t("app.columns_in_this_statement_114b82", { p0: scope.tables.slice(0, 3).join(', '), p1: scope.tables.length > 3 ? I.t("app.and_others_tables_total_6df37e", { p0: scope.tables.length }) : '' });
       } else {
         // 还没有 FROM（比如刚写 SELECT）时，才放宽到全库对象
         const tb = sc.tables.filter(startsWith).map(n => ({ text: n, type: 'table' }));
         const cl = sc.allCols.filter(startsWith).map(n => ({ text: n, type: 'column' }));
         items = tb.concat(cl, fn, kw);
-        kind = '关键字 / 对象';
+        kind = I.t("app.keywords_objects_2c171d");
       }
     }
 
@@ -1310,16 +1252,11 @@
     const el = $('#ac');
     if (!el) return;
     acState = { items: st.items, idx: 0, from: st.from, to: st.to, quote: st.quote || '' };
-    const tag = t => t === 'table' ? ['表', 't'] : t === 'column' ? ['列', 'c'] : t === 'function' ? ['函', 'f'] : ['K', 'k'];
-    el.innerHTML = '<div class="ac-head">' + esc(st.kind) + ' · ' + st.items.length + ' 项（↑↓ 选择，Enter 补全）</div>' +
-      st.items.map((it, i) => {
+    const tag = t => t === 'table' ? [I.t("app.table_c35f80"), 't'] : t === 'column' ? [I.t("app.column_c06d21"), 'c'] : t === 'function' ? [I.t("app.fn_72832f"), 'f'] : ['K', 'k'];
+    I.html(el, I.t("app.suggestions_select_enter_complete_584ee7", { p0: esc(st.kind), p1: st.items.length, p2: I.join(st.items.map((it, i) => {
         const [ch, cls] = tag(it.type);
-        return '<div class="ac-item' + (i === 0 ? ' sel' : '') + '" data-i="' + i + '">' +
-          '<span class="ac-t ' + cls + '">' + ch + '</span>' +
-          '<span class="ac-n">' + esc(it.text) + '</span>' +
-          '<span class="ac-dim">' + esc(it.type === 'table' ? '表' : it.type === 'column' ? '列' : it.type === 'function' ? '函数' : '关键字') + '</span>' +
-          '</div>';
-      }).join('');
+        return I.join(['<div class="ac-item', i === 0 ? ' sel' : '', '" data-i="', i, '">', '<span class="ac-t ', cls, '">', ch, '</span>', '<span class="ac-n">', esc(it.text), '</span>', '<span class="ac-dim">', esc(it.type === 'table' ? I.t("app.table_c35f80") : it.type === 'column' ? I.t("app.column_c06d21") : it.type === 'function' ? I.t("app.function_183299") : I.t("app.keyword_884e46")), '</span>', '</div>']);
+      })) }));
     const p = acCaret();
     const lineH = 19;
     const boxH = Math.min(232, 26 + st.items.length * 21);
@@ -1414,14 +1351,14 @@
 
   async function execSql(sql, opts) {
     const context = (opts && opts.context) || queryContext(conn(), opts && opts.database);
-    if (!contextOpen(context)) return { error: '连接已关闭或不可用', ms: 0 };
+    if (!contextOpen(context)) return { error: I.t("app.connection_closed_or_unavailable_aff9ee"), ms: 0 };
     const t0 = performance.now();
     try {
       const r = await context.engine.exec(sql, context.database);
       r.ms = Math.round(performance.now() - t0);
       return r;
     } catch (err) {
-      return { error: err && err.message ? err.message : String(err), ms: Math.round(performance.now() - t0) };
+      return { error: err && I.detail(err) ? I.detail(err) : String(err), ms: Math.round(performance.now() - t0) };
     }
   }
 
@@ -1446,17 +1383,18 @@
   async function runQuery(opts) {
     opts = opts || {};
     const d = opts.document || doc();
-    if (!d) { toast('没有活动的查询窗口', true); return; }
+    if (!d) { toast(I.t("app.no_active_query_tab_eb854d"), true); return; }
     const context = opts.context || queryContext(conn());
-    if (!contextOpen(context) || !state.docs.includes(d)) { toast('连接或查询窗口已关闭', true); return; }
+    if (!contextOpen(context) || !state.docs.includes(d)) { toast(I.t("app.connection_or_query_tab_closed_2dacd3"), true); return; }
     if (!opts.document) d.sql = sqlEl.value; // 文档内容始终是整篇
     const cur = opts.sql === undefined ? currentSql() : { sql: opts.sql, selection: false };
     const sql = cur.sql;                 // 实际执行的是选区或整篇
-    if (!sql) { toast('请输入 SQL 语句', true); return; }
+    if (!sql) { toast(I.t("app.enter_a_sql_statement_36960f"), true); return; }
     const version = d.queryVersion = (d.queryVersion || 0) + 1;
     const pe = cur.selection ? null : (opts.pendingEdit || d.pendingEdit);
     if (!cur.selection) d.pendingEdit = null;
     d.queryRunning = true;
+    if (doc() === d) $('#sbStatus').dataset.queryState = 'running';
     const visible = () => doc() === d && contextActive(context);
     if (doc() === d) renderResult();
 
@@ -1464,13 +1402,14 @@
     if (visible()) {
       bar.style.width = '0%';
       requestAnimationFrame(() => { if (visible() && d.queryVersion === version && d.queryRunning) bar.style.width = '60%'; });
-      status(cur.selection ? '正在执行选中部分…' : '正在执行…');
+      status(cur.selection ? I.t("app.running_selection_5c159f") : I.t("app.running_85a6ab"));
     }
 
     let r = await execSql(sql, { context });
     if (!state.docs.includes(d) || d.queryVersion !== version) return;
     d.queryRunning = false;
-    if (!contextOpen(context)) r = { error: '查询所属连接已关闭' };
+    if (doc() === d) $('#sbStatus').dataset.queryState = r && !r.error && contextOpen(context) ? 'success' : 'error';
+    if (!contextOpen(context)) r = { error: I.t("app.the_query_s_connection_has_been_5056bc") };
     d.connId = context.connId;
     d.resultContext = context;
     d.resultSql = sql;
@@ -1481,12 +1420,10 @@
 
     if (!r || r.error) {
       d.result = null;
-      d.message = '<span class="err">✗ 执行失败</span>' +
-        (cur.selection ? '\n<span class="dim">（只执行了选中的 ' + cur.lines + ' 行）</span>' : '') +
-        '\n\n<span class="err">' + esc((r && r.error) || '未知错误') + '</span>';
+      d.message = I.t("app.execution_failed_0fd7fa", { p0: cur.selection ? I.t("app.only_the_selection_was_executed_lines_f1b656", { p0: cur.lines }) : '', p1: esc((r && r.error) || I.t("app.unknown_error_13a466")) });
       d.activeRes = 'msg';
       if (doc() === d) renderResult();
-      if (visible()) { status('执行失败'); toast('SQL 执行失败', true); }
+      if (visible()) { status(I.t("app.execution_failed_934459")); toast(I.t("app.sql_execution_failed_d24c3b"), true); }
       return;
     }
 
@@ -1528,27 +1465,19 @@
             return k;
           });
           d.editCols = set.columns;
-          d.editNote = '无主键，按全部列原值匹配';
+          d.editNote = I.t("app.no_primary_key_matching_original_values_1ecab3");
         }
       }
       d.message =
-        '<span class="ok">✓ 查询成功</span>' +
-        (cur.selection ? '\n<span class="dim">（只执行了选中的 ' + cur.lines + ' 行，其余未执行）</span>' : '') +
-        '\n\n' +
-        '<b>(' + d.result.values.length + ' 行返回)</b>\n' +
-        '<span class="dim">结果集 ' + sets.length + ' 个  ·  用时 ' + r.ms + ' ms</span>';
+        I.t("app.query_succeeded_rows_returned_result_sets_11fe69", { p0: cur.selection ? I.t("app.only_the_selection_was_executed_lines_017419", { p0: cur.lines }) : '', p1: d.result.values.length, p2: sets.length, p3: r.ms });
       d.activeRes = 'grid';
-      if (visible()) status(cur.selection ? '查询成功（选区）' : '查询成功');
+      if (visible()) status(cur.selection ? I.t("app.query_succeeded_selection_363540") : I.t("app.query_succeeded_9d03b2"));
     } else {
       d.result = null;
       d.message =
-        '<span class="ok">✓ 命令已成功完成</span>' +
-        (cur.selection ? '\n<span class="dim">（只执行了选中的 ' + cur.lines + ' 行，其余未执行）</span>' : '') +
-        '\n\n' +
-        '<b>(' + (r.rowsAffected || 0) + ' 行受影响)</b>\n' +
-        '<span class="dim">用时 ' + r.ms + ' ms</span>';
+        I.t("app.command_completed_successfully_rows_affected_time_437541", { p0: cur.selection ? I.t("app.only_the_selection_was_executed_lines_017419", { p0: cur.lines }) : '', p1: r.rowsAffected || 0, p2: r.ms });
       d.activeRes = 'msg';
-      if (visible()) status(cur.selection ? '命令已成功完成（选区）' : '命令已成功完成');
+      if (visible()) status(cur.selection ? I.t("app.command_completed_successfully_selection_38fbd8") : I.t("app.command_completed_successfully_b475bb"));
       // 结构变化只刷新产生它的连接，不刷新用户后来选中的连接。
       try { await refreshConnSchema(context.connection, context.database); } catch (e) { /* 刷新失败不影响执行结果 */ }
       renderTree(); updateStatus();
@@ -1563,7 +1492,7 @@
     d.sql = sqlEl.value;
     const isDuck = context.connection.engineKind === 'duckdb';
     const cur = currentSql();
-    if (!cur.sql) { toast('请输入 SQL 语句', true); return; }
+    if (!cur.sql) { toast(I.t("app.enter_a_sql_statement_36960f"), true); return; }
     const sql = (isDuck ? 'EXPLAIN ' : 'EXPLAIN QUERY PLAN ') + cur.sql;
     const version = d.queryVersion = (d.queryVersion || 0) + 1;
     d.queryRunning = true;
@@ -1571,29 +1500,29 @@
     let r = await execSql(sql, { context });
     if (!state.docs.includes(d) || d.queryVersion !== version) return;
     d.queryRunning = false;
-    if (!contextOpen(context)) r = { error: '查询所属连接已关闭' };
+    if (!contextOpen(context)) r = { error: I.t("app.the_query_s_connection_has_been_5056bc") };
     d.connId = context.connId; d.resultContext = context;
     if (!r || r.error) {
       d.result = null;
-      d.message = '<span class="err">✗ 无法生成执行计划</span>\n\n<span class="err">' + esc((r && r.error) || '') + '</span>';
+      d.message = I.t("app.could_not_generate_execution_plan_6647c3", { p0: esc((r && r.error) || '') });
     } else if (r.sets && r.sets.length) {
       const set = r.sets[r.sets.length - 1];
       d.result = { columns: set.columns, values: set.values };
-      d.message = '<span class="ok">✓ 执行计划已生成</span>\n<span class="dim">引擎：' + (isDuck ? 'DuckDB EXPLAIN' : 'SQLite EXPLAIN QUERY PLAN') + '</span>';
+      d.message = I.t("app.execution_plan_generated_engine_12b827", { p0: isDuck ? 'DuckDB EXPLAIN' : 'SQLite EXPLAIN QUERY PLAN' });
     } else {
       d.result = null;
-      d.message = '<span class="warn">引擎未返回执行计划</span>';
+      d.message = I.t("app.the_engine_returned_no_execution_plan_061222");
     }
     d.activeRes = 'grid';
     d.editTable = null; d.editCols = null; d.rowids = null;
     if (doc() === d) renderResult();
-    if (doc() === d && contextActive(context)) status('执行计划');
+    if (doc() === d && contextActive(context)) status(I.t("app.execution_plan_2619dd"));
   }
 
   async function openTableQuery(name, opts) {
     opts = opts || {};
     const c = conn();
-    if (!c) { toast('请先选择一个连接', true); return; }
+    if (!c) { toast(I.t("app.select_a_connection_first_4b5240"), true); return; }
     const isView = !!opts.isView;
     const db = opts.database || (c.engineKind === 'remote' ? c.engine.currentDatabase : null);
     const context = queryContext(c, db);
@@ -1612,7 +1541,7 @@
       try { cols = await c.engine.columns(db, name); if (tbl) tbl.columns = cols; }
       catch (e) { cols = null; }
     }
-    if (!contextOpen(context)) { toast('连接已关闭', true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.connection_closed_30f12a"), true); return; }
 
     const useRowid = !isView && c.engineKind === 'sqlite' && tbl && tbl.hasRowid !== false;
     const head = dialect === 'mssql' ? 'SELECT TOP 1000 ' : 'SELECT ';
@@ -1675,11 +1604,11 @@
   function renderResult() {
     const body = $('#resBody');
     const d = doc();
-    body.innerHTML = '';
+    I.html(body, '');
     if (!d) {
       $('#rowCnt').style.display = 'none';
       updateRowActions(null);
-      body.innerHTML = '<div class="empty-state">' + bigGridIcon() + '<div>没有活动的查询窗口</div><div style="font-size:11px">按 <span class="k">Ctrl+N</span> 新建查询</div></div>';
+      I.html(body, I.t("app.no_active_query_tab_press_ctrl_29c203", { p0: bigGridIcon() }));
       return;
     }
     $$('.res-tab').forEach(t => t.classList.toggle('active', t.dataset.res === d.activeRes));
@@ -1687,14 +1616,13 @@
     if (d.activeRes === 'msg') {
       $('#rowCnt').style.display = 'none';
       updateRowActions(null);
-      body.innerHTML = '<div class="messages">' + (d.message || '<span class="dim">尚无消息。</span>') + '</div>';
+      I.html(body, I.join(['<div class="messages">', d.message || I.t("app.no_messages_yet_4ef619"), '</div>']));
       return;
     }
     if (!d.result) {
       $('#rowCnt').style.display = 'none';
       updateRowActions(null);
-      body.innerHTML = '<div class="empty-state">' + bigGridIcon() +
-        '<div>尚无查询结果</div><div style="font-size:11px">按 <span class="k">F5</span> 执行当前 SQL</div></div>';
+      I.html(body, I.t("app.no_query_results_yet_press_f5_e1c3af", { p0: bigGridIcon() }));
       return;
     }
     // 结果来自另一个连接时给出明确提示，避免误读
@@ -1703,15 +1631,11 @@
       updateRowActions(null);
       const other = state.conns.find(x => x.id === d.connId);
       const cur = conn();
-      body.innerHTML = '<div class="empty-state">' + bigGridIcon() +
-        '<div>该结果来自连接「' + esc(other ? other.name : '已关闭的连接') + '」' +
-        (d.resultContext.database ? '，数据库「' + esc(d.resultContext.database) + '」' : '') + '</div>' +
-        '<div style="font-size:11px">当前连接为「' + esc(cur ? cur.name : '未连接') +
-        '」，按 <span class="k">F5</span> 在目标连接上重新执行</div></div>';
+      I.html(body, I.t("app.this_result_belongs_to_connection_current_f3dfc2", { p0: bigGridIcon(), p1: esc(other ? other.name : I.t("app.closed_connection_c5d13e")), p2: d.resultContext.database ? I.t("app.database_55df70", { p0: esc(d.resultContext.database) }) : '', p3: esc(cur ? cur.name : I.t("app.not_connected_3d5257")) }));
       return;
     }
     $('#rowCnt').style.display = '';
-    $('#rowCnt').textContent = d.result.values.length;
+    I.text($('#rowCnt'), d.result.values.length);
     updateRowActions(d);
 
     const cols = d.result.columns;
@@ -1725,12 +1649,10 @@
     cols.forEach((c, ci) => {
       const meta = colMeta.find(m => m.name === c);
       const sorted = sortState.col === ci ? (sortState.dir > 0 ? '▲' : '▼') : '';
-      htr += '<th data-col="' + ci + '"><div class="th-in">' + esc(c) +
-        (meta ? '<span class="pk">' + (meta.pk ? 'PK ' : '') + '</span><span class="col-type">' + esc(meta.type) + '</span>' : '') +
-        '<span class="sort">' + sorted + '</span></div></th>';
+      htr += I.join(['<th data-col="', ci, '"><div class="th-in">', esc(c), meta ? I.join(['<span class="pk">', meta.pk ? 'PK ' : '', '</span><span class="col-type">', esc(meta.type), '</span>']) : '', '<span class="sort">', sorted, '</span></div></th>']);
     });
     htr += '</tr>';
-    thead.innerHTML = htr;
+    I.html(thead, htr);
     tbl.appendChild(thead);
 
     const tbody = document.createElement('tbody');
@@ -1743,7 +1665,7 @@
         if (x === null || x === undefined) return 1;
         if (y === null || y === undefined) return -1;
         if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
-        return String(x).localeCompare(String(y), 'zh') * dir;
+        return I.compare(String(x), String(y)) * dir;
       });
     }
 
@@ -1751,21 +1673,21 @@
       const tr = document.createElement('tr');
       const rn = document.createElement('td');
       rn.className = 'rowno';
-      rn.textContent = '';
+      I.text(rn, '');
       tr.appendChild(rn);
       v.forEach((val, ci) => {
         const td = document.createElement('td');
         td.dataset.col = ci;
         td.dataset.row = i;
-        if (val === null || val === undefined) { td.className = 'null'; td.textContent = 'NULL'; }
-        else if (typeof val === 'number') { td.className = 'num'; td.textContent = Number.isInteger(val) ? val.toLocaleString() : String(val); }
-        else if (val instanceof Uint8Array) { td.className = 'blob'; td.textContent = 'BLOB (' + val.length + ' 字节)'; }
-        else { td.textContent = String(val); }
+        if (val === null || val === undefined) { td.className = 'null'; I.text(td, 'NULL'); }
+        else if (typeof val === 'number') { td.className = 'num'; I.text(td, Number.isInteger(val) ? I.number(val) : String(val)); }
+        else if (val instanceof Uint8Array) { td.className = 'blob'; I.text(td, I.t("app.blob_bytes_603be7", { p0: val.length })); }
+        else { I.text(td, String(val)); }
         // 只要是「从表打开」的结果集就可编辑；列元信息（PK/类型）缺失不影响编辑，
         // 否则 schema 缓存一旦丢失，整张表就变成不可编辑且没有任何提示。
         if (d.editTable && !d.isView && !d.queryRunning) {
           td.classList.add('editable');
-          td.title = '双击编辑（右键可新增/删除行）';
+          I.attr(td, 'title', I.t("app.double_click_to_edit_right_click_0ebc09"));
         }
         tr.appendChild(td);
       });
@@ -1773,7 +1695,7 @@
     });
     tbl.appendChild(tbody);
     body.appendChild(tbl);
-    Array.from(tbody.children).forEach((tr, idx) => { tr.firstChild.textContent = idx + 1; });
+    Array.from(tbody.children).forEach((tr, idx) => { I.text(tr.firstChild, idx + 1); });
 
     thead.querySelectorAll('th[data-col]').forEach(th => th.addEventListener('click', () => {
       const ci = +th.dataset.col;
@@ -1812,11 +1734,7 @@
         }
         const sel = tbody.querySelectorAll('tr.selected').length;
         showMenu(e.clientX, e.clientY,
-          '<div class="c-title">' + esc(d.editTable) + '</div>' +
-          mi('table', '新增行…', 'row-add') +
-          mi('folder', '删除选中行' + (sel ? '（' + sel + '）' : ''), 'row-del', '', !sel) +
-          '<div class="c-sep"></div>' +
-          mi('query', '复制选中行（制表符分隔）', 'row-copy', '', !sel));
+          I.join(['<div class="c-title">', esc(d.editTable), '</div>', mi('table', I.t("app.add_row_c91cea"), 'row-add'), mi('folder', I.t("app.delete_selected_rows_fa8e7d", { p0: sel ? '（' + sel + '）' : '' }), 'row-del', '', !sel), '<div class="c-sep"></div>', mi('query', I.t("app.copy_selected_rows_tab_separated_c04dd4"), 'row-copy', '', !sel)]));
       });
     }
   }
@@ -1843,7 +1761,7 @@
       if (v === null || v === undefined) parts.push(q(k) + ' IS NULL');
       else { parts.push(q(k) + ' = ?'); params.push(v); }
     });
-    if (!parts.length) throw new Error('无法定位该行（缺少行标识）');
+    if (!parts.length) throw I.error(I.t("app.cannot_locate_this_row_missing_row_c06c76"));
     return { where: parts.join(' AND '), params };
   }
 
@@ -1851,7 +1769,7 @@
   function editTarget(d) {
     if (!d || !d.result || !d.editTable || d.isView || d.queryRunning ||
         !state.docs.includes(d) || !contextActive(d.resultContext)) {
-      toast('请切回结果所属连接和数据库，并等待查询完成后再编辑', true);
+      toast(I.t("app.switch_back_to_the_result_s_8fab18"), true);
       return null;
     }
     return { document: d, result: d.result, version: d.queryVersion, context: d.resultContext,
@@ -1873,7 +1791,7 @@
     const inp = document.createElement('input');
     inp.value = old === null ? '' : old;
     inp.spellcheck = false;
-    td.textContent = '';
+    I.text(td, '');
     td.appendChild(inp);
     inp.focus();
     inp.select();
@@ -1884,7 +1802,7 @@
       const nv = inp.value;
       td.classList.remove('editing');
       if (!commit || nv === (old === null ? '' : String(old))) { renderResult(); return; }
-      if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭，请重新打开表后编辑', true); renderResult(); return; }
+      if (!editTargetCurrent(target)) { toast(I.t("app.the_result_changed_or_the_connection_50c370"), true); renderResult(); return; }
       const c = target.context.connection;
       const q = n => S.quoteIdentFor(n, dialectOf(c));
       const e = target.context.engine;
@@ -1896,7 +1814,7 @@
         // 0 行受影响：行定位条件没匹配到任何行（行已被删除 / 改动，或按全部列原值匹配时
         // BLOB、日期精度、浮点数等原值无法精确比较）。此时不能假装成功改掉本地单元格。
         if (!res || !(res.rowsAffected > 0)) {
-          toast('更新失败：没有行被修改（该行可能已被删除或修改，或无法按原值精确定位），已恢复原值', true);
+          toast(I.t("app.update_failed_no_rows_changed_the_037052"), true);
           renderResult();
           return;
         }
@@ -1906,15 +1824,15 @@
           if (ci >= 0) cur.result.values[rowIdx][ci] = val;
         }
         if (d.editKeyType === 'cols' && res && res.rowsAffected > 1) {
-          toast('已更新 ' + res.rowsAffected + ' 行：该表无主键，存在完全重复的行，全部被一并修改', true);
+          toast(I.t("app.updated_rows_this_table_has_no_4721c4", { p0: res.rowsAffected }), true);
           await reloadTableData(target);
         } else {
-          toast('已更新 ' + d.editTable + '.' + colName);
+          toast(I.t("app.updated_07eb8e", { p0: d.editTable, p1: colName }));
         }
         if (contextOpen(target.context)) await persistConn(c);
         renderResult();
       } catch (err) {
-        toast('更新失败：' + (err && err.message ? err.message : err), true);
+        toast(I.t("app.update_failed_3a4eb3", { p0: err && I.detail(err) ? I.detail(err) : err }), true);
         renderResult();
       }
     };
@@ -1958,38 +1876,29 @@
     if (!target) return;
     const d = target.data, c = target.context.connection;
     const cols = await tableColumnsFor(d, c);
-    if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭', true); return; }
-    if (!cols.length) { toast('无法获取表结构，不能新增行', true); return; }
+    if (!editTargetCurrent(target)) { toast(I.t("app.the_result_changed_or_the_connection_fa9f69"), true); return; }
+    if (!cols.length) { toast(I.t("app.cannot_add_a_row_without_the_efa438"), true); return; }
     const q = n => S.quoteIdentFor(n, dialectOf(c));
     const ddl = (findTable(d.editTable, d.editDb, c) || {}).ddl || '';
 
-    const rows = cols.map(col => {
+    const rows = I.join(cols.map(col => {
       const auto = col.auto === true ||
         /auto_increment|identity|serial/i.test(String(col.type || '')) ||
         new RegExp('\\b' + String(col.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[^,)]*AUTOINCREMENT', 'i').test(ddl);
-      const tags = (col.pk ? '<span class="tag pk-tag">PK</span>' : '') +
-        (auto ? '<span class="tag auto-tag">自增</span>' : '') +
-        (col.notnull ? '<span class="tag">必填</span>' : '');
-      const ph = auto ? '留空自动生成'
-        : (col.dflt !== null && col.dflt !== undefined ? '默认 ' + String(col.dflt).slice(0, 22)
-          : (col.notnull ? '必填' : 'NULL'));
-      return '<div class="add-row" data-col="' + esc(col.name) + '">' +
-        '<label title="' + esc(col.name) + '">' + esc(col.name) + '</label>' +
-        '<input type="text" class="add-val" spellcheck="false" placeholder="' + esc(ph) + '">' +
-        '<label class="add-null" title="勾选后写入 NULL"><input type="checkbox" class="add-isnull">NULL</label>' +
-        '<span class="add-meta">' + tags + '<span class="col-type">' + esc(String(col.type || '')) + '</span></span>' +
-        '</div>';
-    }).join('');
+      const tags = I.join([col.pk ? '<span class="tag pk-tag">PK</span>' : '',
+        auto ? I.t("app.auto_3ffee6") : '',
+        col.notnull ? I.t("app.required_24da94") : '']);
+      const ph = auto ? I.t("app.leave_blank_to_generate_47d950")
+        : (col.dflt !== null && col.dflt !== undefined ? I.t("app.default_6b8542", { p0: String(col.dflt).slice(0, 22) })
+          : (col.notnull ? I.t("app.required_11da9d") : 'NULL'));
+      return I.t("app.null_4105be", { p0: esc(col.name), p1: esc(col.name), p2: esc(col.name), p3: esc(ph), p4: tags, p5: esc(String(col.type || '')) });
+    }));
 
-    const m = openModal('向 ' + esc(d.editTable) + ' 新增一行',
-      '<div class="add-form">' + rows + '</div>' +
-      '<div class="add-note">' +
-      '留空且勾选 <b>NULL</b> → 写入 NULL；留空但未勾选 → 交给数据库默认值（自增列请留空）。' +
-      (d.editKeyType === 'cols' ? '<br>该表<b>没有主键</b>，插入后按全部列原值定位行。' : '') +
-      '</div>',
-      '<button class="btn primary" data-ok>插入</button><button class="btn" data-cancel>取消</button>',
+    const m = openModal(I.t("app.add_a_row_to_fafaa0", { p0: esc(d.editTable) }),
+      I.t("app.blank_with_null_checked_insert_null_d9fff8", { p0: rows, p1: d.editKeyType === 'cols' ? I.t("app.this_table_has_no_primary_key_ee3960") : '' }),
+      I.t("app.insert_cancel_00d291"),
       async (mm) => {
-        if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭，请重新打开新增窗口', true); return false; }
+        if (!editTargetCurrent(target)) { toast(I.t("app.the_result_changed_or_the_connection_ebe5c2"), true); return false; }
         const names = [], ph = [], params = [];
         let bad = null;
         mm.querySelectorAll('.add-row').forEach(r => {
@@ -1998,27 +1907,27 @@
           const raw = r.querySelector('.add-val').value;
           const meta = cols.find(x => x.name === name) || {};
           if (isnull) {
-            if (meta.notnull) { bad = name + ' 是必填列，不能为 NULL'; return; }
+            if (meta.notnull) { bad = I.t("app.is_required_and_cannot_be_null_7d8279", { p0: name }); return; }
             names.push(name); ph.push('?'); params.push(null); return;
           }
           if (raw === '') return;             // 交给数据库默认值
           names.push(name); ph.push('?'); params.push(raw);
         });
         if (bad) { toast(bad, true); return true; }   // 保持对话框
-        if (!names.length) { toast('至少需要填写一列', true); return true; }
-        busy(true, '插入中…');
+        if (!names.length) { toast(I.t("app.fill_in_at_least_one_column_a4977a"), true); return true; }
+        busy(true, I.t("app.inserting_2a9ad4"));
         try {
           const sql = 'INSERT INTO ' + q(d.editTable) +
             ' (' + names.map(q).join(', ') + ') VALUES (' + ph.join(', ') + ')';
           const r = await target.context.engine.run(sql, params, target.context.database);
-          toast('已插入 ' + ((r && r.rowsAffected) || 1) + ' 行');
+          toast(I.t("app.rows_inserted_bbc58f", { p0: (r && r.rowsAffected) || 1 }));
           busy(false);
           if (contextOpen(target.context)) await persistConn(c);
           await reloadTableData(target);
           return false;                        // 关闭对话框
         } catch (e) {
           busy(false);
-          toast('插入失败：' + (e && e.message ? e.message : e), true);
+          toast(I.t("app.insert_failed_28cb78", { p0: e && I.detail(e) ? I.detail(e) : e }), true);
           return true;                         // 保持对话框，方便改
         }
       }, true);
@@ -2032,30 +1941,30 @@
     if (!target) return;
     const d = target.data, c = target.context.connection;
     const tbody = document.querySelector('#resBody table.grid tbody');
-    if (!tbody) { toast('没有可删除的数据', true); return; }
+    if (!tbody) { toast(I.t("app.no_data_to_delete_ce0e20"), true); return; }
     const trs = Array.from(tbody.querySelectorAll('tr.selected'));
-    if (!trs.length) { toast('请先选中要删除的行（Ctrl / Shift 可多选）', true); return; }
+    if (!trs.length) { toast(I.t("app.select_the_rows_to_delete_first_6a8d2c"), true); return; }
     const idxs = trs.map(tr => {
       const td = tr.querySelector('td[data-row]');
       return td ? +td.dataset.row : -1;
     }).filter(i => i >= 0);
-    if (!idxs.length) { toast('未取到行标识，无法删除', true); return; }
+    if (!idxs.length) { toast(I.t("app.cannot_delete_without_row_identifiers_9d1cdc"), true); return; }
     const q = n => S.quoteIdentFor(n, dialectOf(c));
     const extra = d.editKeyType === 'cols'
-      ? '<br><span style="color:var(--amber)">该表没有主键，按全部列原值匹配：若存在完全重复的行，会被一并删除。</span>' : '';
-    await confirmThen('删除行',
-      '将从 <b>' + esc(d.editTable) + '</b> 删除 <b>' + idxs.length + '</b> 行，该操作不可撤销。' + extra,
+      ? I.t("app.this_table_has_no_primary_key_149a3a") : '';
+    await confirmThen(I.t("app.delete_rows_8ed1bd"),
+      I.t("app.delete_rows_from_this_cannot_be_a0c106", { p0: esc(d.editTable), p1: idxs.length, p2: extra }),
       async () => {
-        if (!editTargetCurrent(target)) { toast('结果已变化或连接已关闭，请重新选择要删除的行', true); return; }
+        if (!editTargetCurrent(target)) { toast(I.t("app.the_result_changed_or_the_connection_0e68fc"), true); return; }
         let n = 0;
         for (const i of idxs) {
-          if (!contextOpen(target.context)) { toast('连接已关闭，已停止删除', true); return; }
+          if (!contextOpen(target.context)) { toast(I.t("app.connection_closed_deletion_stopped_d368b3"), true); return; }
           const w = rowWhere(d, i, q);
           const r = await target.context.engine.run('DELETE FROM ' + q(d.editTable) + ' WHERE ' + w.where,
             w.params, target.context.database);
           n += (r && r.rowsAffected) || 0;
         }
-        toast('已删除 ' + n + ' 行');
+        toast(I.t("app.rows_deleted_5303fe", { p0: n }));
         if (contextOpen(target.context)) await persistConn(c);
         await reloadTableData(target);
       }, true);
@@ -2068,26 +1977,25 @@
     const editable = !!(d && d.editTable && d.result && !d.isView && !d.queryRunning && contextActive(d.resultContext));
     add.style.display = editable ? '' : 'none';
     del.style.display = editable ? '' : 'none';
-    if (!editable) { hint.style.display = 'none'; hint.textContent = ''; return; }
+    if (!editable) { hint.style.display = 'none'; I.text(hint, ''); return; }
     hint.style.display = '';
-    hint.innerHTML = '✎ 可编辑 <b>' + esc(d.editTable) + '</b>' +
-      (d.editNote ? ' <span class="warn">· ' + esc(d.editNote) + '</span>' : ' · 双击单元格修改');
-    hint.title = d.editKeyType === 'rowid' ? '使用 SQLite rowid 精确定位行'
-      : d.editKeyType === 'pk' ? '使用主键定位行'
-        : '该表没有主键：按全部列的原值定位行，存在完全重复的行时会同时被修改';
+    I.html(hint, I.t("app.editable_ab4d79", { p0: esc(d.editTable), p1: d.editNote ? I.join([' <span class="warn">· ', esc(d.editNote), '</span>']) : I.t("app.double_click_a_cell_to_edit_573959") }));
+    I.attr(hint, 'title', d.editKeyType === 'rowid' ? I.t("app.rows_are_matched_by_sqlite_rowid_06486e")
+      : d.editKeyType === 'pk' ? I.t("app.rows_are_matched_by_primary_key_78a9f1")
+        : I.t("app.this_table_has_no_primary_key_a24d48"));
   }
 
   /** 复制选中的行（制表符分隔，可直接粘进 Excel） */
   function copySelectedRows() {
     const d = doc();
     const tbody = document.querySelector('#resBody table.grid tbody');
-    if (!tbody || !d || !d.result) { toast('没有可复制的数据', true); return; }
+    if (!tbody || !d || !d.result) { toast(I.t("app.no_data_to_copy_251384"), true); return; }
     const trs = Array.from(tbody.querySelectorAll('tr.selected'));
-    if (!trs.length) { toast('请先选中要复制的行', true); return; }
+    if (!trs.length) { toast(I.t("app.select_the_rows_to_copy_first_a863c7"), true); return; }
     const lines = trs.map(tr => Array.from(tr.querySelectorAll('td')).slice(1)
       .map(td => td.classList.contains('null') ? '' : td.textContent).join('\t'));
     copyText(lines.join('\n'));
-    toast('已复制 ' + lines.length + ' 行');
+    toast(I.t("app.rows_copied_5ef708", { p0: lines.length }));
   }
 
   $('#btnRowAdd').addEventListener('click', () => addRowDialog());
@@ -2113,26 +2021,26 @@
   }
   $('#btnResCsv').addEventListener('click', () => {
     const d = doc();
-    if (!d || !d.result) { toast('没有可导出的结果', true); return; }
+    if (!d || !d.result) { toast(I.t("app.no_results_to_export_95cbfc"), true); return; }
     download('result.csv', '\ufeff' + resultToCsv(d), 'text/csv;charset=utf-8');
-    toast('已导出 CSV');
+    toast(I.t("app.csv_exported_3b0e6a"));
   });
   $('#btnResJson').addEventListener('click', () => {
     const d = doc();
-    if (!d || !d.result) { toast('没有可导出的结果', true); return; }
+    if (!d || !d.result) { toast(I.t("app.no_results_to_export_95cbfc"), true); return; }
     const arr = d.result.values.map(r => {
       const o = {};
       d.result.columns.forEach((c, i) => o[c] = r[i]);
       return o;
     });
     download('result.json', JSON.stringify(arr, null, 2), 'application/json');
-    toast('已导出 JSON');
+    toast(I.t("app.json_exported_6cfe08"));
   });
   $('#btnResCopy').addEventListener('click', () => {
     const d = doc();
-    if (!d || !d.result) { toast('没有可复制的结果', true); return; }
+    if (!d || !d.result) { toast(I.t("app.no_results_to_copy_44dcab"), true); return; }
     copyText(resultToCsv(d));
-    toast('已复制结果到剪贴板');
+    toast(I.t("app.results_copied_to_clipboard_ce57d5"));
   });
 
   /* ==========================================================
@@ -2158,12 +2066,12 @@
   // 打开文件选择器前就固定目标；用户选文件或读取文件时切换界面不能改变目标。
   function pickScriptFile(c = conn()) {
     const context = queryContext(c);
-    if (!contextOpen(context)) { toast('请先选择可用连接', true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.select_an_available_connection_first_8797b9"), true); return; }
     pickFile('.sql,.txt', file => runScriptFile(file, context));
   }
   function pickCsvFile(tableName, database, c = conn()) {
     const context = queryContext(c, database);
-    if (!contextOpen(context) || !tableName) { toast('请先选择要导入的表', true); return; }
+    if (!contextOpen(context) || !tableName) { toast(I.t("app.select_the_table_to_import_into_b0ce49"), true); return; }
     pickFile('.csv,.txt', file => importCsvToTable(file, tableName, context.database, context));
   }
   function pickSelectedCsvFile() {
@@ -2174,24 +2082,24 @@
   }
 
   async function exportDb(c = conn()) {
-    if (!c || !state.conns.includes(c)) { toast('连接已关闭或不可用', true); return; }
+    if (!c || !state.conns.includes(c)) { toast(I.t("app.connection_closed_or_unavailable_aff9ee"), true); return; }
     try {
       const bytes = await c.engine.exportBinary();
       download(c.name.replace(/[^\w\u4e00-\u9fa5.-]+/g, '_') + '.db', new Blob([bytes], { type: 'application/octet-stream' }));
-      toast('已导出数据库文件');
-    } catch (e) { toast('导出失败：' + e.message, true); }
+      toast(I.t("app.database_file_exported_4c6656"));
+    } catch (e) { toast(I.t("app.export_failed_a53238", { p0: I.detail(e) }), true); }
   }
 
   async function exportTableCsv(name, db) {
     const r = await execSql('SELECT * FROM ' + qid(name) + ';', db ? { database: db } : undefined);
-    if (!r || r.error) { toast('导出失败：' + ((r && r.error) || ''), true); return; }
-    if (!r.sets.length) { toast('表为空', true); return; }
+    if (!r || r.error) { toast(I.t("app.export_failed_a53238", { p0: (r && r.error) || '' }), true); return; }
+    if (!r.sets.length) { toast(I.t("app.table_is_empty_83c62b"), true); return; }
     const set = r.sets[r.sets.length - 1];
     const q = s => { s = s === null || s === undefined ? '' : String(s); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [set.columns.map(q).join(',')];
     set.values.forEach(row => lines.push(row.map(q).join(',')));
     download(name + '.csv', '\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8');
-    toast('已导出 ' + name + '.csv');
+    toast(I.t("app.exported_csv_129af1", { p0: name }));
   }
 
   function parseCsv(text) {
@@ -2216,13 +2124,13 @@
   }
 
   async function importCsvToTable(file, tableName, db, context = queryContext(conn(), db)) {
-    if (!contextOpen(context)) { toast('导入目标连接已关闭或不可用', true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.the_import_connection_is_closed_or_12c69b"), true); return; }
     let text;
     try { text = await readFile(file, true); }
-    catch (e) { toast('读取 CSV 失败：' + e.message, true); return; }
-    if (!contextOpen(context)) { toast('导入目标连接已关闭', true); return; }
+    catch (e) { toast(I.t("app.failed_to_read_csv_e5644e", { p0: I.detail(e) }), true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.the_import_connection_is_closed_732486"), true); return; }
     const rows = parseCsv(text).filter(r => r.length && !(r.length === 1 && r[0] === ''));
-    if (!rows.length) { toast('CSV 为空', true); return; }
+    if (!rows.length) { toast(I.t("app.csv_is_empty_eb79e7"), true); return; }
     const header = rows[0], data = rows.slice(1);
     const e = context.engine, c0 = context.connection;
     const tbl = findTable(tableName, context.database, c0);
@@ -2232,48 +2140,48 @@
       try { colInfo = await e.columns(context.database, tableName); if (tbl) tbl.columns = colInfo; }
       catch (err) { colInfo = null; }
     }
-    if (!contextOpen(context)) { toast('导入目标连接已关闭', true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.the_import_connection_is_closed_732486"), true); return; }
     const tableCols = colInfo ? colInfo.map(x => x.name) : [];
-    if (!tableCols.length) { toast('无法读取表 ' + tableName + ' 的列信息', true); return; }
+    if (!tableCols.length) { toast(I.t("app.cannot_read_column_information_for_table_0c29eb", { p0: tableName }), true); return; }
     // 保留表头在文件中的原始位置，忽略空表头时不能把后续数据列向前移动。
     const mapping = header.map((name, index) => ({ name: name.trim(), index })).filter(col => col.name);
     const useCols = mapping.map(col => col.name);
-    if (!useCols.length) { toast('CSV 没有有效的列名', true); return; }
-    if (new Set(useCols).size !== useCols.length) { toast('CSV 表头包含重复列名', true); return; }
+    if (!useCols.length) { toast(I.t("app.csv_has_no_valid_column_names_13e9fb"), true); return; }
+    if (new Set(useCols).size !== useCols.length) { toast(I.t("app.csv_header_contains_duplicate_column_names_48697f"), true); return; }
     const unknown = useCols.filter(name => !tableCols.includes(name));
-    if (unknown.length) { toast('CSV 包含未知列：' + unknown.join(', '), true); return; }
-    if (!data.length) { toast('CSV 没有数据行', true); return; }
+    if (unknown.length) { toast(I.t("app.csv_contains_unknown_columns_5dbf2a", { p0: unknown.join(', ') }), true); return; }
+    if (!data.length) { toast(I.t("app.csv_has_no_data_rows_854b6f"), true); return; }
 
-    await confirmThen('导入 CSV 到 ' + c0.name + (context.database ? ' / ' + context.database : '') + ' / ' + tableName,
-      '共 <b>' + data.length + '</b> 行数据，将使用列：<br><span style="font-family:var(--font-mono);font-size:11px">' + esc(useCols.join(', ')) + '</span><br><br>数据将追加到现有表中。',
+    await confirmThen(I.t("app.import_csv_into_6d066e", { p0: c0.name, p1: context.database ? ' / ' + context.database : '', p2: tableName }),
+      I.t("app.rows_will_be_imported_using_these_bd1ed9", { p0: data.length, p1: esc(useCols.join(', ')) }),
       async () => {
-        if (!contextOpen(context)) { toast('导入目标连接已关闭', true); return; }
+        if (!contextOpen(context)) { toast(I.t("app.the_import_connection_is_closed_732486"), true); return; }
         const ph = useCols.map(() => '?').join(', ');
         const sql = 'INSERT INTO ' + qid(tableName, c0) + ' (' + useCols.map(x => qid(x, c0)).join(', ') + ') VALUES (' + ph + ')';
         const idxs = mapping.map(col => col.index);
         let ok = 0, fail = 0, firstErr = '';
         // 只有浏览器内 SQLite（有 e.db）才包一层本地事务；远程引擎每条语句独立执行
         const localTx = !!(e.db && e.db.run);
-        busy(true, '正在导入…', '0 / ' + data.length);
+        busy(true, I.t("app.importing_f6dc1b"), '0 / ' + data.length);
         try {
           if (localTx) e.db.run('BEGIN');
           for (let i = 0; i < data.length; i++) {
-            if (!contextOpen(context)) throw new Error('目标连接已关闭，已停止导入');
+            if (!contextOpen(context)) throw I.error(I.t("app.target_connection_closed_import_stopped_6cb524"));
             const vals = idxs.map(ix => {
               const v = ix >= 0 ? data[i][ix] : null;
               return v === '' || v === undefined ? null : v;
             });
             // 必须 await：远程引擎的 run 是异步的，不等待会并发发出全部请求且错误无法捕获
             try { await e.run(sql, vals, context.database); ok++; }
-            catch (err) { fail++; if (!firstErr) firstErr = err && err.message ? err.message : String(err); }
-            if (i % 200 === 0) { busy(true, '正在导入…', i + ' / ' + data.length); await new Promise(r => setTimeout(r, 0)); }
+            catch (err) { fail++; if (!firstErr) firstErr = err && I.detail(err) ? I.detail(err) : String(err); }
+            if (i % 200 === 0) { busy(true, I.t("app.importing_f6dc1b"), i + ' / ' + data.length); await new Promise(r => setTimeout(r, 0)); }
           }
           if (localTx) e.db.run('COMMIT');
         } catch (err) {
           try { if (localTx) e.db.run('ROLLBACK'); } catch (x) { /* ignore */ }
           if (localTx) ok = 0;
           fail = data.length - ok;
-          firstErr = firstErr || (err && err.message) || String(err);
+          firstErr = firstErr || (err && I.detail(err)) || String(err);
         }
         busy(false);
         let followupError = '';
@@ -2282,9 +2190,9 @@
             await persistConn(c0);
             await refreshConnSchema(c0, context.database);
             renderTree(); updateStatus();
-          } catch (err) { followupError = '；保存或刷新失败：' + err.message; }
+          } catch (err) { followupError = I.t("app.save_or_refresh_failed_33bbf8", { p0: I.detail(err) }); }
         }
-        toast('导入完成：成功 ' + ok + ' 行' + (fail ? '，失败 ' + fail + ' 行（首个错误：' + firstErr + '）' : '') + followupError, fail > 0 || !!followupError);
+        toast(I.t("app.import_complete_rows_succeeded_f267db", { p0: ok, p1: fail ? I.t("app.rows_failed_first_error_ceae89", { p0: fail, p1: firstErr }) : '', p2: followupError }), fail > 0 || !!followupError);
       });
   }
 
@@ -2294,12 +2202,12 @@
     // 校验是否为 SQLite 文件
     const magic = String.fromCharCode.apply(null, bytes.slice(0, 15));
     if (magic !== 'SQLite format 3') {
-      toast('不是有效的 SQLite 数据库文件', true);
+      toast(I.t("app.not_a_valid_sqlite_database_file_4ce2a0"), true);
       return;
     }
     state.connSeq++;
     const name = file.name.replace(/\.(db|sqlite|sqlite3)$/i, '');
-    busy(true, '正在打开数据库…', file.name);
+    busy(true, I.t("app.opening_database_bda6b0"), file.name);
     try {
       const c = await createConnection({
         id: 'conn_' + Date.now() + '_' + state.connSeq,
@@ -2313,28 +2221,28 @@
       state.conns.push(c);
       state.activeConnId = c.id;
       renderTree(); updateStatus();
-      toast('已打开数据库 ' + name + '（' + c.schema.tables.length + ' 张表）');
+      toast(I.t("app.opened_database_tables_bedfc5", { p0: name, p1: c.schema.tables.length }));
     } catch (e) {
-      toast('打开失败：' + e.message, true);
+      toast(I.t("app.open_failed_0ed1e1", { p0: I.detail(e) }), true);
     }
     busy(false);
   }
 
   async function runScriptFile(file, context = queryContext(conn())) {
-    if (!contextOpen(context)) { toast('脚本目标连接已关闭或不可用', true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.the_script_s_target_connection_is_024ea8"), true); return; }
     let text;
     try { text = await readFile(file, true); }
-    catch (e) { toast('读取 SQL 文件失败：' + e.message, true); return; }
-    if (!contextOpen(context)) { toast('脚本目标连接已关闭', true); return; }
-    if (!text.trim()) { toast('脚本为空', true); return; }
+    catch (e) { toast(I.t("app.failed_to_read_sql_file_740c6e", { p0: I.detail(e) }), true); return; }
+    if (!contextOpen(context)) { toast(I.t("app.the_script_s_target_connection_is_a155c4"), true); return; }
+    if (!text.trim()) { toast(I.t("app.script_is_empty_713320"), true); return; }
     // 文件在独立标签页执行，既不拼接已有 SQL，也不沿用旧编辑器的选区。
-    const d = newDoc(text, file.name || '导入脚本.sql');
+    const d = newDoc(text, file.name || I.t("app.imported_script_sql_235e99"));
     await runQuery({ document: d, context, sql: text });
   }
 
   async function scriptInsert(name, db) {
     const r = await execSql(selectTopSql(name, 200), db ? { database: db } : undefined);
-    if (!r || r.error || !r.sets.length) { toast('无法生成脚本', true); return; }
+    if (!r || r.error || !r.sets.length) { toast(I.t('app.scriptFailed'), true); return; }
     const set = r.sets[r.sets.length - 1];
     const q = v => v === null || v === undefined ? 'NULL'
       : typeof v === 'number' ? String(v)
@@ -2343,7 +2251,7 @@
     set.values.forEach(row => {
       out += 'INSERT INTO ' + qid(name) + ' (' + set.columns.map(x => qid(x)).join(', ') + ') VALUES (' + row.map(q).join(', ') + ');\n';
     });
-    showDdl(out, name + ' — INSERT 脚本', true);
+    showDdl(out, I.t('app.insertScript', { name }), true);
   }
 
   /* ==========================================================
@@ -2351,66 +2259,66 @@
    * ========================================================== */
   const DRIVER_INFO = {
     'sqlite-local': {
-      title: 'SQLite', tag: '浏览器内', remote: false,
-      desc: '本地内置引擎，离线可用。数据持久化到浏览器，可导入导出 .db 文件。'
+      title: 'SQLite', tag: I.t("app.in_browser_76f92c"), remote: false,
+      desc: I.t("app.built_in_local_engine_available_offline_9c5689")
     },
     sqlite: {
-      title: 'SQLite', tag: '服务器文件', remote: false,
-      desc: '打开运行 server.js 那台机器上的 .db 文件，无需上传，适合大文件。'
+      title: 'SQLite', tag: I.t("app.server_file_e00110"), remote: false,
+      desc: I.t("app.open_a_db_file_on_the_8b1680")
     },
     mysql: {
-      title: 'MySQL / MariaDB', tag: '远程', remote: true, port: 3306,
-      desc: '通过 mysql2 驱动连接远程 MySQL 服务器，支持多库浏览与跨库查询。'
+      title: 'MySQL / MariaDB', tag: I.t("app.remote_7ba009"), remote: true, port: 3306,
+      desc: I.t("app.connect_to_a_remote_mysql_server_8b5a9c")
     },
     postgres: {
-      title: 'PostgreSQL', tag: '远程', remote: true, port: 5432, database: 'postgres',
-      desc: '通过 pg 驱动连接远程 PostgreSQL，支持多库与 schema 层级。'
+      title: 'PostgreSQL', tag: I.t("app.remote_7ba009"), remote: true, port: 5432, database: 'postgres',
+      desc: I.t("app.connect_to_remote_postgresql_through_pg_3b72bc")
     },
     mssql: {
-      title: 'SQL Server', tag: '远程', remote: true, port: 1433, database: 'master',
-      desc: '通过 mssql (tedious) 驱动连接远程 SQL Server，支持多库浏览。'
+      title: 'SQL Server', tag: I.t("app.remote_7ba009"), remote: true, port: 1433, database: 'master',
+      desc: I.t("app.connect_to_remote_sql_server_through_ddbfcc")
     }
   };
 
   function fRow(label, inner) {
-    return '<div class="m-row"><label>' + label + '</label>' + inner + '</div>';
+    return I.join(['<div class="m-row"><label>', label, '</label>', inner, '</div>']);
   }
-  function fHint(text) { return '<div class="m-hint">' + text + '</div>'; }
+  function fHint(text) { return I.join(['<div class="m-hint">', text, '</div>']); }
   function fVal(m, sel) { const e = m.querySelector(sel); return e ? e.value.trim() : ''; }
 
   function renderConnFields(container, driverId) {
     const info = DRIVER_INFO[driverId] || {};
     let h = '';
     if (driverId === 'sqlite-local') {
-      h += fRow('连接名称', '<input type="text" id="fName" value="我的数据库">');
-      h += fRow('打开文件', '<button class="btn" id="fPick" style="flex:1">选择 .db / .sqlite 文件…</button>');
-      h += fHint('不选文件则创建一个空数据库。文件只在你本机读取，不会上传。');
-      h += fRow('持久化', '<select id="fPersist"><option value="1">保存到浏览器（刷新后数据仍在）</option><option value="0">仅本次会话</option></select>');
+      h = I.join([h, fRow(I.t("app.connection_name_228c3a"), I.t("app.message_bb795d"))]);
+      h = I.join([h, fRow(I.t("app.open_file_4c8a4e"), I.t("app.choose_a_db_sqlite_file_c4e277"))]);
+      h = I.join([h, fHint(I.t("app.leave_unselected_to_create_an_empty_2f4578"))]);
+      h = I.join([h, fRow(I.t("app.persistence_97ed1a"), I.t("app.save_in_browser_kept_after_reload_46fb88"))]);
     } else if (driverId === 'sqlite') {
-      h += fRow('连接名称', '<input type="text" id="fName" value="服务器数据库">');
-      h += fRow('文件路径', '<input type="text" id="fFile" placeholder="D:\\data\\mydb.db  或  /var/data/mydb.db">');
-      h += fHint('填写运行 server.js 那台机器上的绝对路径；留空则使用内存数据库 :memory:。');
+      h = I.join([h, fRow(I.t("app.connection_name_228c3a"), I.t("app.message_930801"))]);
+      h = I.join([h, fRow(I.t("app.file_path_c71200"), I.t("app.message_c3b6ae"))]);
+      h = I.join([h, fHint(I.t("app.enter_an_absolute_path_on_the_d1764a"))]);
     } else {
-      h += fRow('连接名称', '<input type="text" id="fName" value="' + info.title + '">');
-      h += fRow('主机', '<input type="text" id="fHost" placeholder="127.0.0.1 或 db.example.com">');
-      h += fRow('端口', '<input type="text" id="fPort" value="' + (info.port || '') + '">');
-      h += fRow('用户名', '<input type="text" id="fUser" placeholder="root">');
-      h += fRow('密码', '<input type="password" id="fPass" placeholder="留空表示无密码">');
-      h += fRow('数据库', '<input type="text" id="fDb" value="' + (info.database || '') + '" placeholder="可留空">');
+      h = I.join([h, fRow(I.t("app.connection_name_228c3a"), I.join(['<input type="text" id="fName" value="', info.title, '">']))]);
+      h = I.join([h, fRow(I.t("app.host_e87d9f"), I.t("app.message_ef740e"))]);
+      h = I.join([h, fRow(I.t("app.port_e71ac3"), I.join(['<input type="text" id="fPort" value="', info.port || '', '">']))]);
+      h = I.join([h, fRow(I.t("app.username_1a3f06"), '<input type="text" id="fUser" placeholder="root">')]);
+      h = I.join([h, fRow(I.t("app.password_a621ab"), I.t("app.message_076d6d"))]);
+      h = I.join([h, fRow(I.t("app.database_263200"), I.t("app.message_9a1723", { p0: info.database || '' }))]);
       if (driverId === 'mssql') {
-        h += fRow('加密', '<select id="fEncrypt"><option value="1">强制加密（推荐）</option><option value="0">不加密</option></select>');
+        h = I.join([h, fRow(I.t("app.encryption_320c25"), I.t("app.require_encryption_recommended_no_encryption_f72c81"))]);
       }
-      h += fRow('保存密码', '<select id="fSavePw"><option value="0">不保存（更安全）</option><option value="1">保存到 connections.json</option></select>');
-      h += fHint('连接由本地后端进程代理。保存密码会以明文写入项目目录下的 connections.json，请勿提交到版本库。');
+      h = I.join([h, fRow(I.t("app.save_password_2e9f48"), I.t("app.do_not_save_safer_save_in_327c17"))]);
+      h = I.join([h, fHint(I.t("app.connections_go_through_the_local_backend_af81af"))]);
     }
-    container.innerHTML = h;
+    I.html(container, h);
 
     if (driverId === 'sqlite-local') {
       const btn = container.querySelector('#fPick');
       btn.addEventListener('click', () => {
         pickFile('.db,.sqlite,.sqlite3', f => {
           container._pickedFile = f;
-          btn.textContent = f.name;
+          I.text(btn, f.name);
           container.querySelector('#fName').value = f.name.replace(/\.(db|sqlite|sqlite3)$/i, '');
         });
       });
@@ -2420,26 +2328,19 @@
   function connDialog() {
     const avail = Object.fromEntries((state.drivers || []).map(d => [d.id, d]));
     const order = ['sqlite-local', 'sqlite', 'mysql', 'postgres', 'mssql'];
-    const cards = order.map(id => {
+    const cards = I.join(order.map(id => {
       const info = DRIVER_INFO[id];
       const backend = avail[id];
       const missing = id !== 'sqlite-local' && backend && backend.available === false;
-      return '<div class="engine-card' + (id === 'sqlite-local' ? ' sel' : '') + (missing ? ' disabled' : '') +
-        '" data-driver="' + id + '"' + (missing ? ' title="' + esc(backend.reason || '驱动未安装') + '"' : '') + '>' +
-        '<div class="ec-t">' + info.title + (missing ? ' <span style="color:var(--red);font-size:10px">未安装</span>' : '') + '</div>' +
-        '<div class="ec-d"><span class="tag" style="margin-right:6px">' + info.tag + '</span>' + info.desc + '</div>' +
-        '</div>';
-    }).join('');
+      const reason = backend?.reasonKey ? I.t(backend.reasonKey) : backend?.reason || I.t("app.driver_not_installed_143ec2");
+      return I.join(['<div class="engine-card', id === 'sqlite-local' ? ' sel' : '', missing ? ' disabled' : '', '" data-driver="', id, '"', missing ? I.join([' title="', esc(reason), '"']) : '', '>', '<div class="ec-t">', info.title, missing ? I.t("app.not_installed_dd0a98") : '', '</div>', '<div class="ec-d"><span class="tag" style="margin-right:6px">', info.tag, '</span>', info.desc, '</div>', '</div>']);
+    }));
 
     const html =
-      '<div id="savedBox"></div>' +
-      '<div class="engine-pick" id="driverPick" style="flex-wrap:wrap;gap:8px">' + cards + '</div>' +
-      '<div id="connFields"></div>';
+      I.join(['<div id="savedBox"></div>', '<div class="engine-pick" id="driverPick" style="flex-wrap:wrap;gap:8px">', cards, '</div>', '<div id="connFields"></div>']);
 
-    const m = openModal('新建连接', html,
-      '<button class="btn" data-test>测试连接</button>' +
-      '<button class="btn primary" data-ok>连接</button>' +
-      '<button class="btn" data-cancel>取消</button>',
+    const m = openModal(I.t("app.new_connection_2cb204"), html,
+      I.t("app.test_connection_connect_cancel_b11dea"),
       (mm) => {
         const cfg = collectConnConfig(mm);
         if (!cfg) return true;   // 校验失败，保持对话框
@@ -2455,7 +2356,7 @@
       card.addEventListener('click', () => {
         if (card.classList.contains('disabled')) {
           const b = avail[card.dataset.driver];
-          toast(b && b.reason ? b.reason : '该驱动未安装', true);
+          toast(b?.reasonKey ? I.t(b.reasonKey) : b?.reason || I.t("app.this_driver_is_not_installed_1ecc89"), true);
           return;
         }
         m.querySelectorAll('.engine-card').forEach(x => x.classList.remove('sel'));
@@ -2477,26 +2378,19 @@
     try {
       const r = await S.api('/api/saved');
       list = (r.connections || []).slice().reverse().slice(0, 8);
-    } catch (e) { box.innerHTML = ''; return; }
-    if (!list.length) { box.innerHTML = ''; return; }
+    } catch (e) { I.html(box, ''); return; }
+    if (!list.length) { I.html(box, ''); return; }
 
-    box.innerHTML = '<div class="saved-title">最近连接（点击直接连接）</div>' +
-      '<div class="saved-list">' + list.map(s =>
-        '<div class="saved-item" data-saved="' + esc(s.id) + '" title="' +
-        esc([s.driver, s.host ? (s.host + (s.port ? ':' + s.port : '')) : s.file].filter(Boolean).join(' · ')) + '">' +
-        '<span class="si-name">' + esc(s.name) + '</span>' +
-        '<span class="si-kind">' + esc(s.driver) + '</span>' +
-        (s.hasPassword ? '<span class="si-lock" title="已保存密码">🔒</span>' : '') +
-        '<span class="si-x" data-del="' + esc(s.id) + '" title="删除这条记录">✕</span>' +
-        '</div>').join('') + '</div>';
+    I.html(box, I.t("app.recent_connections_click_to_connect_9c5549", { p0: I.join(list.map(s =>
+        I.t("app.message_748deb", { p0: esc(s.id), p1: esc([s.driver, s.host ? (s.host + (s.port ? ':' + s.port : '')) : s.file].filter(Boolean).join(' · ')), p2: esc(s.name), p3: esc(s.driver), p4: s.hasPassword ? I.t("app.message_e9efe7") : '', p5: esc(s.id) }))) }));
 
     box.querySelectorAll('.saved-item').forEach(el => {
       el.addEventListener('click', async e => {
         const delId = e.target.getAttribute && e.target.getAttribute('data-del');
         if (delId) {
           e.stopPropagation();
-          try { await S.api('/api/saved/delete', { id: delId }); toast('已删除该连接记录'); }
-          catch (err) { toast('删除失败：' + err.message, true); }
+          try { await S.api('/api/saved/delete', { id: delId }); toast(I.t("app.connection_entry_deleted_ce9eb5")); }
+          catch (err) { toast(I.t("app.delete_failed_9619d7", { p0: I.detail(err) }), true); }
           loadSavedInto(m);
           return;
         }
@@ -2511,7 +2405,7 @@
   function collectConnConfig(m) {
     const driverId = m._driverId;
     const fields = m.querySelector('#connFields');
-    const name = fVal(m, '#fName') || (DRIVER_INFO[driverId] || {}).title || '未命名连接';
+    const name = fVal(m, '#fName') || (DRIVER_INFO[driverId] || {}).title || I.resolve(I.t("app.unnamed_connection_e484c1"));
 
     if (driverId === 'sqlite-local') {
       return { driver: 'sqlite-local', name, persist: fVal(m, '#fPersist') === '1', file: fields._pickedFile || null };
@@ -2521,8 +2415,8 @@
     }
     const host = fVal(m, '#fHost');
     const user = fVal(m, '#fUser');
-    if (!host) { toast('请填写主机地址', true); return null; }
-    if (!user) { toast('请填写用户名', true); return null; }
+    if (!host) { toast(I.t("app.enter_a_host_address_4b2767"), true); return null; }
+    if (!user) { toast(I.t("app.enter_a_username_9b305a"), true); return null; }
     return {
       driver: driverId, name, host, user,
       port: parseInt(fVal(m, '#fPort'), 10) || DRIVER_INFO[driverId].port,
@@ -2536,7 +2430,7 @@
   async function testConn(m) {
     const cfg = collectConnConfig(m);
     if (!cfg) return;
-    busy(true, '正在测试连接…', (cfg.host ? cfg.host + ':' + cfg.port : cfg.file) || '');
+    busy(true, I.t("app.testing_connection_01a675"), (cfg.host ? cfg.host + ':' + cfg.port : cfg.file) || '');
     try {
       if (cfg.driver === 'sqlite-local') {
         const e = S.create('sqlite');
@@ -2546,24 +2440,23 @@
         const sc = await e.schema();
         e.close();
         busy(false);
-        toast('连接成功：SQLite（' + sc.tables.length + ' 张表）');
+        toast(I.t("app.connected_sqlite_tables_af3c3e", { p0: sc.tables.length }));
         return;
       }
       const meta = await S.api('/api/connect', cfg);
       await S.api('/api/disconnect', { connId: meta.connId });
       busy(false);
-      toast('连接成功：' + meta.label + ' ' + (meta.serverVersion || '') +
-        '，共 ' + (meta.databases || []).length + ' 个数据库');
+      toast(I.t("app.connected_databases_194d79", { p0: meta.dialect === 'sqlite' ? I.t('driver.sqliteLabel') : meta.label, p1: meta.serverVersion || '', p2: (meta.databases || []).length }));
     } catch (e) {
       busy(false);
-      toast('测试失败：' + e.message, true);
+      toast(I.t("app.test_failed_2c6417", { p0: I.detail(e) }), true);
     }
   }
 
   async function doCreateConnection(cfg) {
     /* ---- 浏览器内 SQLite ---- */
     if (cfg.driver === 'sqlite-local') {
-      busy(true, '正在创建连接…', '初始化 SQLite 引擎');
+      busy(true, I.t("app.creating_connection_f98e7b"), I.t("app.initializing_sqlite_engine_ca5d39"));
       try {
         state.connSeq++;
         const id = 'conn_' + Date.now() + '_' + state.connSeq;
@@ -2571,7 +2464,7 @@
         if (cfg.file) {
           data = new Uint8Array(await readFile(cfg.file, false));
           const magic = String.fromCharCode.apply(null, data.slice(0, 15));
-          if (magic !== 'SQLite format 3') throw new Error('不是有效的 SQLite 数据库文件');
+          if (magic !== 'SQLite format 3') throw I.error(I.t("app.not_a_valid_sqlite_database_file_4ce2a0"));
         }
         const engine = S.create('sqlite');
         await engine.open({ data: data || undefined, name: cfg.name });
@@ -2585,17 +2478,17 @@
         state.activeConnId = c.id;
         renderTree(); updateStatus(); renderResult();
         busy(false);
-        toast('已连接：' + cfg.name + '（' + c.schema.tables.length + ' 张表）');
+        toast(I.t("app.connected_tables_62d4be", { p0: cfg.name, p1: c.schema.tables.length }));
         if (!state.docs.length) newDoc(welcomeSql(c));
       } catch (e) {
         busy(false);
-        toast('创建连接失败：' + e.message, true);
+        toast(I.t("app.failed_to_create_connection_df0501", { p0: I.detail(e) }), true);
       }
       return;
     }
 
     /* ---- 远程服务器 / 服务端文件 ---- */
-    busy(true, '正在连接…', (cfg.host ? cfg.host + ':' + cfg.port : cfg.file) || '');
+    busy(true, I.t("app.connecting_8be0ea"), (cfg.host ? cfg.host + ':' + cfg.port : cfg.file) || '');
     try {
       state.connSeq++;
       const engine = S.create('remote');
@@ -2619,8 +2512,7 @@
       busy(false);
 
       const dbCount = (engine.databases || []).length;
-      toast('已连接：' + cfg.name + ' · ' + engine.label + ' ' + (engine.serverVersion || '') +
-        (dbCount ? ' · ' + dbCount + ' 个数据库' : ''));
+      toast(I.t("app.connected_2ffdfc", { p0: cfg.name, p1: engine.label, p2: engine.serverVersion || '', p3: dbCount ? I.t("app.databases_86aef9", { p0: dbCount }) : '' }));
 
       if (cfg.driver) {
         try { await S.api('/api/saved', cfg); } catch (e) { /* 保存失败不影响使用 */ }
@@ -2628,7 +2520,7 @@
       if (!state.docs.length) newDoc(welcomeSql(c));
     } catch (e) {
       busy(false);
-      toast('连接失败：' + e.message, true);
+      toast(I.t("app.connection_failed_82200f", { p0: I.detail(e) }), true);
     }
   }
 
@@ -2669,48 +2561,48 @@
    * ========================================================== */
   async function doRefresh(silent) {
     const c = conn();
-    if (!c) { if (!silent) toast('请先选择连接', true); return; }
+    if (!c) { if (!silent) toast(I.t("app.select_a_connection_first_b6e444"), true); return; }
     try {
       await refreshConnSchema(c);
       renderTree();
       updateStatus();
-      if (!silent) toast('已刷新 ' + c.name);
-    } catch (e) { if (!silent) toast('刷新失败：' + e.message, true); }
+      if (!silent) toast(I.t("app.refreshed_69488d", { p0: c.name }));
+    } catch (e) { if (!silent) toast(I.t("app.refresh_failed_64464d", { p0: I.detail(e) }), true); }
   }
   function updateStatus() {
     const c = conn();
     const dot = $('#sbDot'), txt = $('#sbConn');
     if (c) {
       dot.classList.remove('off');
-      txt.textContent = c.name;
+      I.text(txt, c.name);
       let engineLabel = 'SQLite';
-      if (c.engineKind === 'remote') engineLabel = c.engine.label || c.driver || '远程';
+      if (c.engineKind === 'remote') engineLabel = c.engine.label || c.driver || I.t("app.remote_7ba009");
       else if (c.engineKind === 'duckdb') engineLabel = 'DuckDB';
-      $('#sbEngine').textContent = engineLabel;
+      I.text($('#sbEngine'), engineLabel);
 
       const sc = c.schema;
       if (sc && sc.tables) {
-        let objTxt = sc.tables.length + ' 表 / ' + ((sc.views || []).length) + ' 视图';
-        const nr = ((sc.procedures || []).length) + ((sc.functions || []).length);
-        if (nr) objTxt += ' / ' + nr + ' 过程·函数';
-        $('#sbObjects').textContent = objTxt;
+        let objTxt = I.t("app.tables_views_7b8fbe", { p0: sc.tables.length, p1: (sc.views || []).length });
+        const nr = (sc.procedures || []).length + (sc.functions || []).length;
+        if (nr) objTxt = I.join([objTxt, I.t("app.routines_892fc9", { p0: nr })]);
+        I.text($('#sbObjects'), objTxt);
       } else {
-        $('#sbObjects').textContent = '';
+        I.text($('#sbObjects'), '');
       }
 
       if (c.engineKind === 'remote') {
         const v = c.engine.serverVersion || '';
-        const host = c.host ? (c.host + (c.port ? ':' + c.port : '')) : (c.file || '');
-        $('#sbPersist').textContent = host + (v ? '  ·  v' + v.split(' ')[0].slice(0, 18) : '');
+        const host = c.host ? (I.join([c.host, c.port ? I.join([':', c.port]) : ''])) : (c.file || '');
+        I.text($('#sbPersist'), I.join([host, v ? I.join(['  ·  v', v.split(' ')[0].slice(0, 18)]) : '']));
       } else {
-        $('#sbPersist').textContent = c.persist ? '已持久化' : '会话级';
+        I.text($('#sbPersist'), c.persist ? I.t("app.persisted_7a5830") : I.t("app.session_only_0b4596"));
       }
     } else {
       dot.classList.add('off');
-      txt.textContent = '未连接';
-      $('#sbEngine').textContent = '—';
-      $('#sbObjects').textContent = '';
-      $('#sbPersist').textContent = '';
+      I.text(txt, I.t("app.not_connected_3d5257"));
+      I.text($('#sbEngine'), '—');
+      I.text($('#sbObjects'), '');
+      I.text($('#sbPersist'), '');
     }
     updateDbSwitcher();
   }
@@ -2721,31 +2613,29 @@
     const btn = document.getElementById('btnDb');
     if (!el) return;
     const c = conn();
-    if (!c) { el.textContent = '—'; if (btn) btn.classList.add('disabled'); return; }
+    if (!c) { I.text(el, '—'); if (btn) btn.classList.add('disabled'); return; }
     if (btn) btn.classList.remove('disabled');
-    if (c.engineKind === 'remote') el.textContent = c.engine.currentDatabase || '—';
-    else el.textContent = c.name;
+    if (c.engineKind === 'remote') I.text(el, c.engine.currentDatabase || '—');
+    else I.text(el, c.name);
   }
 
   function showDbMenu(x, y) {
     const c = conn();
-    if (!c) { toast('请先选择一个连接', true); return; }
-    if (c.engineKind !== 'remote') { toast('当前连接只有一个数据库'); return; }
+    if (!c) { toast(I.t("app.select_a_connection_first_4b5240"), true); return; }
+    if (c.engineKind !== 'remote') { toast(I.t("app.this_connection_has_only_one_database_ae8dd0")); return; }
     const dbs = c.engine.databases || [];
-    if (!dbs.length) { toast('未获取到数据库列表'); return; }
+    if (!dbs.length) { toast(I.t("app.no_database_list_available_446888")); return; }
     const cur = c.engine.currentDatabase;
-    const html = '<div class="c-title">切换数据库（共 ' + dbs.length + ' 个）</div>' +
-      dbs.map(db => '<div class="c-item" data-db="' + esc(db) + '">' +
-        '<span class="c-ico">' + (db === cur ? '✓' : '') + '</span>' + esc(db) + '</div>').join('');
+    const html = I.t("app.switch_database_be1c65", { p0: dbs.length, p1: I.join(dbs.map(db => I.join(['<div class="c-item" data-db="', esc(db), '">', '<span class="c-ico">', db === cur ? '✓' : '', '</span>', esc(db), '</div>']))) });
     showMenu(x, y, html);
   }
 
   function confirmThen(title, msg, onOk, danger) {
     return new Promise(res => {
-      const m = openModal(esc(title), '<div style="line-height:1.8">' + msg + '</div>',
-        '<button class="btn ' + (danger ? 'danger' : 'primary') + '" data-ok>确定</button><button class="btn" data-cancel>取消</button>',
+      const m = openModal(esc(title), I.join(['<div style="line-height:1.8">', msg, '</div>']),
+        I.t("app.ok_cancel_7bf9e8", { p0: danger ? 'danger' : 'primary' }),
         async (mm) => {
-          busy(true, '执行中…');
+          busy(true, I.t("app.executing_195f0f"));
           try { await onOk(); } finally { busy(false); }
           res(true);
         });
@@ -2769,48 +2659,40 @@
     'import-csv': () => pickSelectedCsvFile(),
     'run-script': () => pickScriptFile(),
     'export-db': exportDb,
-    'save': async () => { await saveAllDirty(); const d = doc(); if (d) { d.dirty = false; renderDocs(); } toast('已保存到浏览器本地'); },
+    'save': async () => { await saveAllDirty(); const d = doc(); if (d) { d.dirty = false; renderDocs(); } toast(I.t("app.saved_in_this_browser_cc5a30")); },
     'execute': runQuery,
     'explain': explainQuery,
     'routine-ddl': () => { if (ctxData) openRoutine(ctxData._obj, ctxData._db); },
     'routine-call': () => { if (ctxData) insertQuery(routineCallScript(ctxData._obj)); },
-    'cancel': () => { $('#progBar').style.width = '0%'; status('已取消'); toast('已请求取消'); },
+    'cancel': () => { $('#progBar').style.width = '0%'; status(I.t("app.cancelled_a37778")); toast(I.t("app.cancellation_requested_0a8b91")); },
     'refresh': () => doRefresh(),
     'theme': () => {
       const r = document.documentElement;
       const next = r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       r.setAttribute('data-theme', next);
       localStorage.setItem('sqltool.theme', next);
-      toast('已切换到' + (next === 'dark' ? '深色' : '浅色（SSMS 经典）') + '主题');
+      toast(I.t("app.switched_to_theme_8a1aa0", { p0: next === 'dark' ? I.t("app.dark_a6b75d") : I.t("app.light_ssms_classic_267b3b") }));
     },
     'collapse': () => {
       treeEl.querySelectorAll('.children').forEach(u => u.classList.add('collapsed'));
       treeEl.querySelectorAll('.caret').forEach(c => c.classList.remove('open'));
-      toast('已折叠全部节点');
+      toast(I.t("app.all_nodes_collapsed_07ad7e"));
     },
-    'about': () => openModal('关于 SQLTool',
-      '<div style="line-height:1.9">' +
-      '<b>SQLTool — 数据库工作台</b><br>' +
-      '<span style="opacity:.7">参照 SQL Server Management Studio 界面构建</span><br><br>' +
-      '两种引擎接入方式：<br>' +
-      '· <b>浏览器内</b>：<b>SQLite</b>（sql.js / WebAssembly）— 本地内置，离线可用，数据存 IndexedDB<br>' +
-      '· <b>服务器代理</b>：<b>MySQL / PostgreSQL / SQL Server</b> 与服务器端 SQLite 文件<br>' +
-      '&nbsp;&nbsp;由 <code>server.js</code>（仅监听 127.0.0.1）代为连接，密码不回传前端<br><br>' +
-      '<span style="opacity:.7">浏览器内数据不上传任何服务器，可随时导出为 .db 文件。</span>' +
-      '</div>', null, null, true),
+    'about': () => openModal(I.t("app.about_sqltool_0d5dbb"),
+      I.t("app.sqltool_database_workbench_interface_inspired_by_9de5b4"), null, null, true),
     'copy-sel': () => {
       const s = sqlEl.value.substring(sqlEl.selectionStart, sqlEl.selectionEnd);
-      if (!s) { toast('请先选中要复制的内容', true); return; }
-      copyText(s); toast('已复制 ' + s.length + ' 个字符');
+      if (!s) { toast(I.t("app.select_content_to_copy_first_fe7a2f"), true); return; }
+      copyText(s); toast(I.t("app.characters_copied_2e3d7e", { p0: s.length }));
     },
     'paste-sel': async () => {
       try {
         const t = await navigator.clipboard.readText();
-        if (!t) { toast('剪贴板为空', true); return; }
+        if (!t) { toast(I.t("app.clipboard_is_empty_62b92f"), true); return; }
         sqlEl.setRangeText(t, sqlEl.selectionStart, sqlEl.selectionEnd, 'end');
         const d = doc(); if (d) { d.dirty = true; renderDocs(); }
         updateEditor();
-      } catch (e) { toast('浏览器拒绝访问剪贴板，请使用 Ctrl+V', true); }
+      } catch (e) { toast(I.t("app.clipboard_access_was_denied_use_ctrl_686623"), true); }
     },
     'select-all': () => { sqlEl.focus(); sqlEl.select(); },
     'format': () => {
@@ -2818,7 +2700,7 @@
       sqlEl.value = formatSql(sqlEl.value);
       d.sql = sqlEl.value; d.dirty = true;
       renderDocs(); updateEditor();
-      toast('已格式化 SQL');
+      toast(I.t("app.sql_formatted_2b2630"));
     },
     'toggle-explorer': () => {
       const ex = $('#explorer'), sp = $('#splitV');
@@ -2826,32 +2708,17 @@
       ex.style.display = hid ? '' : 'none';
       sp.style.display = hid ? '' : 'none';
     },
-    'shortcuts': () => openModal('键盘快捷键',
-      '<div style="line-height:2">' +
-      '<b>F5</b> — 执行当前 SQL<br>' +
-      '<b>Ctrl + F5</b> — 显示执行计划<br>' +
-      '<b>Ctrl + Enter</b> — 执行当前 SQL<br>' +
-      '<b>Ctrl + N</b> — 新建查询窗口<br>' +
-      '<b>Ctrl + O</b> — 打开数据库文件<br>' +
-      '<b>Ctrl + S</b> — 保存到浏览器本地<br>' +
-      '<b>Ctrl + W</b> — 关闭当前查询窗口<br>' +
-      '<b>F8</b> — 显示/隐藏对象资源管理器<br>' +
-      '<b>Tab</b> — 编辑器内插入 4 个空格<br>' +
-      '<b>Ctrl + Space</b> — 手动唤出输入提示<br>' +
-      '<b>↑ / ↓</b> — 在提示列表中移动，<b>Enter</b> 补全，<b>Esc</b> 关闭<br>' +
-      '<b>双击表名</b> — 打开该表数据<br>' +
-      '<b>双击单元格</b> — 直接编辑并写回数据库<br>' +
-      '<b>Ctrl / Shift + 单击行</b> — 多选行，便于批量删除<br>' +
-      '</div>', null, null, true),
+    'shortcuts': () => openModal(I.t("app.keyboard_shortcuts_89ce48"),
+      I.t("app.f5_run_current_sql_ctrl_f5_fd72ea"), null, null, true),
     'complete': () => { sqlEl.focus(); acTrigger(true); },
     'clear-db': () => {
       const c = conn();
       if (c && c.engineKind === 'remote') {
-        toast('远程数据库已禁用「清空数据库」，请手动执行 DROP 语句', true);
+        toast(I.t("app.clear_database_is_disabled_for_remote_1168dd"), true);
         return;
       }
-      return confirmThen('清空当前数据库',
-      '将删除当前连接中的<b>所有表、视图、索引</b>，此操作不可撤销。建议先导出备份。',
+      return confirmThen(I.t("app.clear_current_database_67f204"),
+      I.t("app.this_deletes_all_tables_views_and_5d07a9"),
       async () => {
         const c = conn();
         if (!c) return;
@@ -2864,7 +2731,7 @@
         }
         await persistConn(c);
         await doRefresh();
-        toast('已清空数据库');
+        toast(I.t("app.database_cleared_782c75"));
       }, true);
     }
   };
@@ -2934,12 +2801,12 @@
     const saved = localStorage.getItem('sqltool.theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
 
-    busy(true, '正在初始化…', '加载 SQLite 引擎');
+    busy(true, I.t("app.initializing_9866f8"), I.t("app.loading_sqlite_engine_e48ff6"));
     try {
       await S.engines.sqlite.ensureLib();
     } catch (e) {
       busy(false);
-      toast('引擎加载失败：' + e.message + '（请确认通过 HTTP 服务器访问，而非直接双击打开文件）', true);
+      toast(I.t("app.engine_failed_to_load_open_through_74f75d", { p0: I.detail(e) }), true);
       return;
     }
 
@@ -2961,12 +2828,12 @@
       newDoc('-- 已恢复 ' + state.conns.length + ' 个本地连接\n-- 在左侧双击表名即可查看数据\n\nSELECT name, type FROM sqlite_master WHERE type IN (\'table\',\'view\') ORDER BY type, name;\n');
       setTimeout(runQuery, 120);
     } else {
-      newDoc(welcomeSql({ name: '未连接', engineKind: 'sqlite' }));
+      newDoc(welcomeSql({ name: I.t("app.not_connected_3d5257"), engineKind: 'sqlite' }));
       renderResult();
     }
-    status('就绪');
+    status(I.t("app.ready_b073db"));
     if (state.backendDown) {
-      toast('未检测到本地后端服务，MySQL / PostgreSQL / SQL Server 不可用；浏览器内 SQLite 仍可正常使用。', true);
+      toast(I.t("app.local_backend_not_detected_mysql_postgresql_52cff8"), true);
     }
     // 启动完成标志。注意 #sbStatus 的静态初值本身就是「就绪」，
     // 所以外部（自动化测试）不能靠它判断初始化是否结束，必须用这个标志。

@@ -9,7 +9,8 @@
     "test:engine": "node tools/cdp-run.js http://127.0.0.1:8777/app/selftest.html __selftest",
     "test:api": "node tools/api-test.js",
     "test:ui": "node tools/ui-test.js http://127.0.0.1:8777",
-    "test:templates": "node tools/template-test.js"
+    "test:templates": "node tools/template-test.js",
+    "test:i18n": "node tools/i18n-test.js"
   },
   "dependencies": {
     "mysql2": "^3.11.5",

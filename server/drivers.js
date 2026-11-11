@@ -13,6 +13,7 @@
  * 支持：mysql / postgres / mssql / sqlite(node:sqlite，本地文件)
  * ============================================================ */
 'use strict';
+const E = require('./messages');
 
 /* ----------------------------------------------------------
  * 通用工具
@@ -178,7 +179,7 @@ const mysql = {
   async load() {
     if (this._mod) return this._mod;
     try { this._mod = require('mysql2/promise'); }
-    catch (e) { throw new Error('未安装 mysql2 驱动，请在项目目录执行：npm install'); }
+    catch (e) { throw E.make("driver.missingMysql"); }
     return this._mod;
   },
 
@@ -332,7 +333,7 @@ const mysql = {
 
   async routineDdl(session, database, item) {
     const name = item && item.name;
-    if (!name) throw new Error('缺少对象名');
+    if (!name) throw E.make("api.nameRequired");
     const isProc = (item.kind || item.type) === 'procedure';
     const qi = s => '`' + String(s).replace(/`/g, '``') + '`';
     // 限定库名，避免依赖连接当前的 USE 状态
@@ -384,7 +385,7 @@ const postgres = {
   async load() {
     if (this._mod) return this._mod;
     try { this._mod = require('pg'); }
-    catch (e) { throw new Error('未安装 pg 驱动，请在项目目录执行：npm install'); }
+    catch (e) { throw E.make("driver.missingPg"); }
     return this._mod;
   },
 
@@ -440,7 +441,7 @@ const postgres = {
     try {
       c = await this._openClient(session.cfg, database);
     } catch (e) {
-      throw new Error('无法连接数据库「' + database + '」：' + (e && e.message ? e.message : e));
+      throw E.make('driver.databaseFailed', { database, detail: e });
     }
     session.extra.set(database, c);
     return c;
@@ -583,7 +584,7 @@ const postgres = {
         [item && item.name, (item && item.schema) || 'public']);
       oid = r.rows[0] && r.rows[0].oid;
     }
-    if (!oid) throw new Error('找不到该对象');
+    if (!oid) throw E.make("driver.objectMissing");
     try {
       const r = await client.query('SELECT pg_get_functiondef($1::oid) AS ddl', [String(oid)]);
       const ddl = r.rows[0] && r.rows[0].ddl;
@@ -596,7 +597,7 @@ const postgres = {
        FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
        WHERE p.oid = $1::oid`, [String(oid)]);
     const x = r2.rows[0];
-    if (!x) throw new Error('找不到该对象');
+    if (!x) throw E.make("driver.objectMissing");
     return '-- ' + (item && item.name) + '(' + (x.args || '') + ') RETURNS ' + (x.ret || '') +
       '  LANGUAGE ' + (x.lanname || '') + '\n-- （pg_get_functiondef 未能返回完整定义，以下为源码正文）\n\n' +
       (x.prosrc || '');
@@ -623,7 +624,7 @@ const mssql = {
   async load() {
     if (this._mod) return this._mod;
     try { this._mod = require('mssql'); }
-    catch (e) { throw new Error('未安装 mssql 驱动，请在项目目录执行：npm install'); }
+    catch (e) { throw E.make("driver.missingMssql"); }
     return this._mod;
   },
 
@@ -658,7 +659,7 @@ const mssql = {
     } catch (e) {
       try { await pool.close(); } catch (x) { /* ignore */ }
       // 带上库名，否则用户只看到「用户 'xxx' 登录失败」，无法判断是账号问题还是库权限问题
-      throw new Error('无法连接数据库「' + database + '」：' + (e && e.message ? e.message : e));
+      throw E.make('driver.databaseFailed', { database, detail: e });
     }
     return pool;
   },
@@ -807,7 +808,7 @@ const mssql = {
     let name = (item && item.name) || '';
     // name 可能已带 schema 前缀（dbo.xxx）
     if (name.includes('.')) { const p = name.split('.'); sch = p[0]; name = p[1]; }
-    if (!name) throw new Error('缺少对象名');
+    if (!name) throw E.make("api.nameRequired");
     const req = pool.request();
     req.input('sch', sch);
     req.input('name', name);
@@ -841,7 +842,7 @@ const sqlite = {
   async load() {
     if (this._mod) return this._mod;
     try { this._mod = require('node:sqlite'); }
-    catch (e) { throw new Error('当前 Node.js 版本不支持 node:sqlite（需要 Node 22.5+）'); }
+    catch (e) { throw E.make("driver.sqliteVersion"); }
     return this._mod;
   },
 
@@ -913,7 +914,7 @@ const sqlite = {
   // SQLite 没有存储过程 / 函数这类服务端对象，返回空数组而不是报错
   async routines() { return { procedures: [], functions: [] }; },
 
-  async routineDdl() { throw new Error('SQLite 不支持存储过程与函数'); },
+  async routineDdl() { throw E.make("driver.sqliteRoutines"); },
 
   async close(session) { try { session.db.close(); } catch (e) { /* ignore */ } }
 };
@@ -986,7 +987,8 @@ function driverStatus() {
       id, label: d.label, defaultPort: d.defaultPort,
       defaultDatabase: d.defaultDatabase, needsHost: d.needsHost,
       remote: REMOTE_DRIVERS.includes(id),
-      available, reason
+      available, reason,
+      reasonKey: available ? undefined : { mysql: 'driver.missingMysql', postgres: 'driver.missingPg', mssql: 'driver.missingMssql', sqlite: 'driver.sqliteVersion' }[id]
     };
   });
 }

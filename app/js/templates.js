@@ -1,8 +1,9 @@
 /* SQL 模板库：独立本地存储、文件交换及管理界面。 */
 (function (global) {
   'use strict';
+  const I = window.SqlToolI18n;
 
-  const DIALECTS = { all: '通用 SQL', sqlite: 'SQLite', mysql: 'MySQL / MariaDB', postgres: 'PostgreSQL', mssql: 'SQL Server' };
+  const DIALECTS = { all: I.t("templates.generic_sql_c15301"), sqlite: 'SQLite', mysql: 'MySQL / MariaDB', postgres: 'PostgreSQL', mssql: 'SQL Server' };
   const MAX_ITEMS = 1000, MAX_SQL = 500000, MAX_FILE = 10 * 1024 * 1024;
   let dbPromise = null;
 
@@ -13,8 +14,8 @@
       let failed = false;
       const fail = error => { failed = true; dbPromise = null; reject(error); };
       request.onupgradeneeded = () => request.result.createObjectStore('templates', { keyPath: 'id' });
-      request.onerror = () => fail(new Error('无法打开模板库：' + request.error.message));
-      request.onblocked = () => fail(new Error('模板库被其他页面占用，请关闭其他页面后重试'));
+      request.onerror = () => fail(I.error(I.t("templates.cannot_open_template_library_d6dc83", { p0: I.detail(request.error) })));
+      request.onblocked = () => fail(I.error(I.t("templates.the_template_library_is_blocked_by_e08c93")));
       request.onsuccess = () => {
         const db = request.result;
         if (failed) { db.close(); return; }
@@ -33,7 +34,7 @@
       const tx = db.transaction('templates', mode);
       let result, failure;
       tx.oncomplete = () => resolve(result);
-      tx.onabort = tx.onerror = () => reject(failure || tx.error || new Error('模板库操作失败'));
+      tx.onabort = tx.onerror = () => reject(failure || tx.error || I.error(I.t("templates.template_library_operation_failed_8b1672")));
       const abort = error => { failure = error; tx.abort(); };
       try { work(tx.objectStore('templates'), value => { result = value; }, abort); }
       catch (error) { abort(error); }
@@ -41,16 +42,16 @@
   }
 
   function normalize(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('模板必须是对象');
-    if (typeof value.name !== 'string' || !value.name.trim() || value.name.trim().length > 120) throw new Error('模板名称须为 1–120 个字符');
-    if (typeof value.sql !== 'string' || !value.sql.trim() || value.sql.length > MAX_SQL) throw new Error('SQL 正文不能为空，且不能超过 500,000 个字符');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw I.error(I.t("templates.template_must_be_an_object_61c538"));
+    if (typeof value.name !== 'string' || !value.name.trim() || value.name.trim().length > 120) throw I.error(I.t("templates.template_name_must_contain_characters_8f6141"));
+    if (typeof value.sql !== 'string' || !value.sql.trim() || value.sql.length > MAX_SQL) throw I.error(I.t("templates.sql_must_contain_characters_and_cannot_4ef29e"));
     const dialect = value.dialect === undefined ? 'all' : value.dialect;
-    if (typeof dialect !== 'string' || !Object.prototype.hasOwnProperty.call(DIALECTS, dialect)) throw new Error('不支持的数据库方言');
+    if (typeof dialect !== 'string' || !Object.prototype.hasOwnProperty.call(DIALECTS, dialect)) throw I.error(I.t("templates.unsupported_database_dialect_9309d3"));
     const description = value.description === undefined ? '' : value.description;
-    if (typeof description !== 'string' || description.length > 2000) throw new Error('说明不能超过 2,000 个字符');
+    if (typeof description !== 'string' || description.length > 2000) throw I.error(I.t("templates.description_cannot_exceed_characters_d4646e"));
     const tags = value.tags === undefined ? [] : value.tags;
-    if (!Array.isArray(tags) || tags.length > 20 || tags.some(t => typeof t !== 'string' || t.trim().length > 40)) throw new Error('最多 20 个标签，每个标签不超过 40 个字符');
-    if (tags.some(t => /[,，]/.test(t))) throw new Error('单个标签不能包含逗号，请拆分为多个标签');
+    if (!Array.isArray(tags) || tags.length > 20 || tags.some(t => typeof t !== 'string' || t.trim().length > 40)) throw I.error(I.t("templates.use_at_most_tags_with_at_af2c84"));
+    if (tags.some(t => /[,，]/.test(t))) throw I.error(I.t("templates.a_tag_cannot_contain_commas_split_a677bf"));
     return { name: value.name.trim(), sql: value.sql, dialect, description,
       tags: Array.from(new Set(tags.map(t => t.trim()).filter(Boolean))) };
   }
@@ -67,13 +68,13 @@
         if (original) {
           s.get(original.id).onsuccess = e => {
             const current = e.target.result;
-            if (!current || current.revision !== original.revision) return abort(new Error('模板已被其他页面修改或删除，请重新打开后编辑'));
+            if (!current || current.revision !== original.revision) return abort(I.error(I.t("templates.this_template_was_changed_or_deleted_fefb31")));
             const updated = { ...current, ...item, revision: current.revision + 1, updatedAt: new Date().toISOString() };
             s.put(updated); done(updated);
           };
         } else {
           s.count().onsuccess = e => {
-            if (e.target.result >= MAX_ITEMS) return abort(new Error('模板库最多保存 1,000 项，请先整理或导出备份'));
+            if (e.target.result >= MAX_ITEMS) return abort(I.error(I.t("templates.the_library_holds_up_to_templates_72fcdf")));
             const created = fresh(item); s.add(created); done(created);
           };
         }
@@ -83,22 +84,22 @@
       return transaction('readwrite', (s, done, abort) => {
         s.get(original.id).onsuccess = e => {
           const current = e.target.result;
-          if (!current || current.revision !== original.revision) return abort(new Error('模板已被其他页面修改或删除，请刷新后重试'));
+          if (!current || current.revision !== original.revision) return abort(I.error(I.t("templates.this_template_was_changed_or_deleted_93786a")));
           s.delete(original.id); done();
         };
       });
     },
     importItems(items) {
       // 在开启事务前完成所有校验；事务中的请求同步发出，不插入 await。
-      if (!Array.isArray(items) || !items.length || items.length > MAX_ITEMS) throw new Error('导入文件须包含 1–1,000 个模板');
+      if (!Array.isArray(items) || !items.length || items.length > MAX_ITEMS) throw I.error(I.t("templates.import_file_must_contain_templates_9837aa"));
       const clean = items.map((value, index) => {
-        try { return normalize(value); } catch (error) { throw new Error('第 ' + (index + 1) + ' 项：' + error.message); }
+        try { return normalize(value); } catch (error) { throw I.error(I.t("templates.item_6498ab", { p0: index + 1, p1: I.detail(error) })); }
       });
       return transaction('readwrite', (s, done, abort) => {
         s.getAll().onsuccess = e => {
           const existing = e.target.result, seen = new Set(existing.map(fingerprint)), added = [];
           clean.forEach(item => { const key = fingerprint(item); if (!seen.has(key)) { seen.add(key); added.push(fresh(item)); } });
-          if (existing.length + added.length > MAX_ITEMS) return abort(new Error('导入后将超过 1,000 项，未写入任何模板'));
+          if (existing.length + added.length > MAX_ITEMS) return abort(I.error(I.t("templates.import_would_exceed_templates_nothing_was_babf94")));
           added.forEach(item => s.add(item));
           done({ added: added.length, skipped: clean.length - added.length });
         };
@@ -107,21 +108,21 @@
   };
 
   function parseImport(text) {
-    if (new Blob([text]).size > MAX_FILE) throw new Error('模板文件不能超过 10 MB');
+    if (new Blob([text]).size > MAX_FILE) throw I.error(I.t("templates.template_file_cannot_exceed_mb_df3f09"));
     let value;
-    try { value = JSON.parse(text.replace(/^\uFEFF/, '')); } catch (error) { throw new Error('文件不是有效的 JSON'); }
+    try { value = JSON.parse(text.replace(/^\uFEFF/, '')); } catch (error) { throw I.error(I.t("templates.file_is_not_valid_json_3827b8")); }
     if (!value || value.format !== 'sqltool-templates' || value.version !== 1 || !Array.isArray(value.templates)) {
-      throw new Error('文件格式不支持，请选择 SQLTool 导出的模板 JSON（版本 1）');
+      throw I.error(I.t("templates.unsupported_file_format_select_a_sqltool_5818a7"));
     }
-    if (!value.templates.length || value.templates.length > MAX_ITEMS) throw new Error('导入文件须包含 1–1,000 个模板');
+    if (!value.templates.length || value.templates.length > MAX_ITEMS) throw I.error(I.t("templates.import_file_must_contain_templates_9837aa"));
     return value.templates.map((item, index) => {
-      try { return normalize(item); } catch (error) { throw new Error('第 ' + (index + 1) + ' 项：' + error.message); }
+      try { return normalize(item); } catch (error) { throw I.error(I.t("templates.item_6498ab", { p0: index + 1, p1: I.detail(error) })); }
     });
   }
 
   function exportText(items) {
     const text = JSON.stringify({ format: 'sqltool-templates', version: 1, templates: items }, null, 2);
-    if (new Blob([text]).size > MAX_FILE) throw new Error('导出内容超过 10 MB，请按搜索或方言筛选后分批导出');
+    if (new Blob([text]).size > MAX_FILE) throw I.error(I.t("templates.export_exceeds_mb_filter_by_search_559e30"));
     return text;
   }
 
@@ -129,25 +130,19 @@
     const term = query.trim().toLocaleLowerCase();
     return items.filter(item => (!dialect || item.dialect === dialect) && (!term ||
       [item.name, item.sql, item.description, ...item.tags].join('\n').toLocaleLowerCase().includes(term)))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.name.localeCompare(b.name));
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || I.compare(a.name, b.name));
   }
 
   function options(all) {
-    return (all ? '<option value="">全部方言</option>' : '') +
-      Object.entries(DIALECTS).map(([value, name]) => '<option value="' + value + '">' + name + '</option>').join('');
+    return I.join([all ? I.t("templates.all_dialects_50131f") : '',
+      I.join(Object.entries(DIALECTS).map(([value, name]) => I.join(['<option value="', value, '">', name, '</option>'])))]);
   }
 
   function edit(bridge, value, original, onSaved) {
     let saving = false;
-    const m = bridge.openModal(original ? '编辑 SQL 模板' : '保存 SQL 模板',
-      '<div class="tpl-form">' +
-      '<label>名称<input data-tpl-name type="text" maxlength="120" autocomplete="off"></label>' +
-      '<div class="tpl-fields"><label>适用方言<select data-tpl-dialect>' + options(false) + '</select></label>' +
-      '<label>标签（用逗号分隔）<input data-tpl-tags type="text" autocomplete="off"></label></div>' +
-      '<label>说明<textarea data-tpl-description rows="2" maxlength="2000"></textarea></label>' +
-      '<label>SQL 正文<textarea data-tpl-sql rows="11" spellcheck="false" maxlength="500000"></textarea></label>' +
-      '<div class="tpl-error" data-tpl-error role="alert"></div></div>',
-      '<button class="btn primary" data-ok>保存模板</button><button class="btn" data-cancel>取消</button>',
+    const m = bridge.openModal(original ? I.t("templates.edit_sql_template_3c20d5") : I.t("templates.save_sql_template_de0ee3"),
+      I.t("templates.name_dialect_tags_comma_separated_description_d9c99a", { p0: options(false) }),
+      I.t("templates.save_template_cancel_aac51e"),
       async () => {
         if (saving) return true;
         saving = true; const button = m.querySelector('[data-ok]'); button.disabled = true;
@@ -156,10 +151,10 @@
             dialect: m.querySelector('[data-tpl-dialect]').value, sql: m.querySelector('[data-tpl-sql]').value,
             description: m.querySelector('[data-tpl-description]').value,
             tags: m.querySelector('[data-tpl-tags]').value.split(/[,，]/).map(t => t.trim()).filter(Boolean) }, original);
-          bridge.toast('模板已保存');
+          bridge.toast(I.t("templates.template_saved_11cd7a"));
           if (onSaved) await onSaved(saved);
           return false;
-        } catch (error) { m.querySelector('[data-tpl-error]').textContent = error.message; return true; }
+        } catch (error) { I.text(m.querySelector('[data-tpl-error]'), I.detail(error)); return true; }
         finally { saving = false; button.disabled = false; }
       }, true);
     m.classList.add('template-editor');
@@ -177,35 +172,25 @@
 
   function openLibrary(bridge) {
     let items = [], filtered = [], selectedId = null, loading = false, loadVersion = 0;
-    const m = bridge.openModal('SQL 模板库',
-      '<div class="tpl-toolbar"><input data-tpl-search type="search" placeholder="搜索名称、标签或 SQL…" aria-label="搜索模板">' +
-      '<select data-tpl-filter aria-label="筛选数据库方言">' + options(true) + '</select>' +
-      '<button class="btn" data-tpl-new>新建</button><button class="btn" data-tpl-import>导入 JSON</button><button class="btn" data-tpl-export>导出筛选结果</button>' +
-      '<button class="btn" data-tpl-refresh>刷新</button></div>' +
-      '<div class="tpl-target" data-tpl-target></div><div class="tpl-layout">' +
-      '<div class="tpl-list" data-tpl-list aria-label="模板列表"></div><div class="tpl-detail">' +
-      '<div class="tpl-detail-head"><h3 data-tpl-title>选择一个模板</h3><span class="tag" data-tpl-kind></span></div>' +
-      '<div class="tpl-meta" data-tpl-meta></div><p class="tpl-description" data-tpl-note></p>' +
-      '<pre class="tpl-preview" data-tpl-preview></pre></div></div>' +
-      '<div class="tpl-bottom"><span data-tpl-count></span><span class="tpl-error" data-tpl-error role="alert"></span></div>',
-      '<button class="btn" data-tpl-edit>编辑</button><button class="btn" data-tpl-copy>复制模板</button><button class="btn danger" data-tpl-delete>删除</button>' +
-      '<span class="spacer"></span><button class="btn" data-tpl-insert></button><button class="btn primary" data-tpl-open>在新标签页打开</button><button class="btn" data-cancel>关闭</button>',
+    const m = bridge.openModal(I.t("templates.sql_template_library_1689fc"),
+      I.t("templates.new_import_json_export_filtered_refresh_296597", { p0: options(true) }),
+      I.t("templates.edit_duplicate_delete_open_in_new_813068"),
       null, true);
     m.classList.add('template-library');
     const el = name => m.querySelector('[data-tpl-' + name + ']');
-    el('insert').textContent = bridge.selection ? '替换选中 SQL' : '插入光标处';
+    I.text(el('insert'), bridge.selection ? I.t("templates.replace_selected_sql_3fc043") : I.t("templates.insert_at_cursor_a06a99"));
     const selected = () => items.find(item => item.id === selectedId);
-    const error = message => { el('error').textContent = message || ''; };
-    const targetText = () => '当前连接：' + bridge.target().label + ' · 打开或插入后，在编辑器执行；执行时使用工作台当前连接。';
+    const error = message => { I.text(el('error'), message || ''); };
+    const targetText = () => I.t("templates.current_connection_open_or_insert_then_7a5ad9", { p0: bridge.target().label });
 
     function renderDetail() {
       const item = selected();
-      el('target').textContent = targetText();
-      el('title').textContent = item ? item.name : '选择一个模板';
-      el('kind').textContent = item ? DIALECTS[item.dialect] : '';
-      el('note').textContent = item ? item.description : '';
-      el('preview').textContent = item ? item.sql : '保存常用查询后，可以在这里搜索和复用。';
-      el('meta').textContent = item ? (item.tags.length ? item.tags.join(' · ') + ' · ' : '') + '更新于 ' + new Date(item.updatedAt).toLocaleString() : '';
+      I.text(el('target'), targetText());
+      I.text(el('title'), item ? item.name : I.t("templates.select_a_template_05c470"));
+      I.text(el('kind'), item ? DIALECTS[item.dialect] : '');
+      I.text(el('note'), item ? item.description : '');
+      I.text(el('preview'), item ? item.sql : I.t("templates.save_frequently_used_queries_to_find_502662"));
+      I.text(el('meta'), item ? I.t("templates.updated_6ba545", { p0: item.tags.length ? item.tags.join(' · ') + ' · ' : '', p1: I.date(item.updatedAt) }) : '');
       ['edit', 'copy', 'delete', 'open', 'insert'].forEach(name => { el(name).disabled = !item || loading || (name === 'insert' && !bridge.canInsert); });
       el('export').disabled = !filtered.length || loading;
     }
@@ -218,12 +203,12 @@
         const button = document.createElement('button'); button.type = 'button'; button.className = 'tpl-item';
         button.dataset.templateId = item.id; button.classList.toggle('active', item.id === selectedId);
         button.setAttribute('aria-pressed', String(item.id === selectedId));
-        const title = document.createElement('strong'); title.textContent = item.name;
-        const sub = document.createElement('span'); sub.textContent = DIALECTS[item.dialect] + (item.tags.length ? ' · ' + item.tags.join(', ') : '');
+        const title = document.createElement('strong'); I.text(title, item.name);
+        const sub = document.createElement('span'); I.text(sub, I.join([DIALECTS[item.dialect], item.tags.length ? I.join([' · ', item.tags.join(', ')]) : '']));
         button.append(title, sub); button.addEventListener('click', () => { selectedId = item.id; render(); }); el('list').appendChild(button);
       });
-      if (!filtered.length) { const empty = document.createElement('p'); empty.className = 'tpl-empty'; empty.textContent = items.length ? '没有匹配的模板' : '暂无模板，点击“新建”或从编辑器保存。'; el('list').appendChild(empty); }
-      el('count').textContent = '显示 ' + filtered.length + ' / ' + items.length + ' 个模板';
+      if (!filtered.length) { const empty = document.createElement('p'); empty.className = 'tpl-empty'; I.text(empty, items.length ? I.t("templates.no_matching_templates_0f5e1c") : I.t("templates.no_templates_yet_click_new_or_b5d18f")); el('list').appendChild(empty); }
+      I.text(el('count'), I.t("templates.showing_templates_429b93", { p0: filtered.length, p1: items.length }));
       renderDetail();
     }
 
@@ -233,7 +218,7 @@
         const result = await store.list();
         if (!m.isConnected || version !== loadVersion) return;
         items = result; if (preferredId) selectedId = preferredId; error(''); render();
-      } catch (e) { if (m.isConnected && version === loadVersion) error(e.message); }
+      } catch (e) { if (m.isConnected && version === loadVersion) error(I.detail(e)); }
     }
     function showSaved(saved) {
       el('search').value = ''; el('filter').value = '';
@@ -243,44 +228,44 @@
     el('refresh').addEventListener('click', () => reload());
     el('new').addEventListener('click', () => edit(bridge, { dialect: bridge.target().dialect || 'all' }, null, showSaved));
     el('edit').addEventListener('click', () => { const item = selected(); if (item) edit(bridge, item, item, showSaved); });
-    el('copy').addEventListener('click', () => { const item = selected(); if (item) edit(bridge, { ...item, name: item.name.slice(0, 115) + ' 副本' }, null, showSaved); });
+    el('copy').addEventListener('click', () => { const item = selected(); if (item) edit(bridge, { ...item, name: I.t("templates.copy_ef5e52", { p0: item.name.slice(0, 115) }) }, null, showSaved); });
     el('delete').addEventListener('click', () => {
       const item = selected(); if (!item) return;
       let deleting = false;
-      const confirmation = bridge.openModal('删除 SQL 模板', '<p data-delete-name></p>',
-        '<button class="btn danger" data-ok>删除</button><button class="btn" data-cancel>取消</button>', async () => {
+      const confirmation = bridge.openModal(I.t("templates.delete_sql_template_af2394"), '<p data-delete-name></p>',
+        I.t("templates.delete_cancel_1a64c3"), async () => {
           if (deleting) return true;
           deleting = true; confirmation.querySelector('[data-ok]').disabled = true;
-          try { await store.remove(item); bridge.toast('模板已删除'); await reload(); return false; }
-          catch (e) { bridge.toast(e.message, true); return true; }
+          try { await store.remove(item); bridge.toast(I.t("templates.template_deleted_b487b4")); await reload(); return false; }
+          catch (e) { bridge.toast(I.detail(e), true); return true; }
           finally { deleting = false; confirmation.querySelector('[data-ok]').disabled = false; }
         });
-      confirmation.querySelector('[data-delete-name]').textContent = '确定删除模板“' + item.name + '”？';
+      I.text(confirmation.querySelector('[data-delete-name]'), I.t("templates.delete_template_1e3f73", { p0: item.name }));
     });
     for (const name of ['open', 'insert']) el(name).addEventListener('click', () => {
       const item = selected(); if (!item) return;
       try {
         if (name === 'open') bridge.open(item); else bridge.insert(item);
         m._close();
-      } catch (e) { error(e.message); }
+      } catch (e) { error(I.detail(e)); }
     });
     el('export').addEventListener('click', () => {
       try { bridge.download('sqltool-templates.json', exportText(filtered), 'application/json;charset=utf-8'); }
-      catch (e) { error(e.message); }
+      catch (e) { error(I.detail(e)); }
     });
     el('import').addEventListener('click', () => {
       const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json';
       input.addEventListener('change', async () => {
         const file = input.files[0]; if (!file || loading || !m.isConnected) return;
-        loading = true; renderDetail(); el('import').disabled = true; error('正在导入…');
+        loading = true; renderDetail(); el('import').disabled = true; error(I.t("templates.importing_f6dc1b"));
         try {
-          if (file.size > MAX_FILE) throw new Error('模板文件不能超过 10 MB');
+          if (file.size > MAX_FILE) throw I.error(I.t("templates.template_file_cannot_exceed_mb_df3f09"));
           const parsed = parseImport(await file.text());
           if (!m.isConnected) return;
           const result = await store.importItems(parsed);
-          bridge.toast('导入完成：新增 ' + result.added + ' 个，跳过相同模板 ' + result.skipped + ' 个');
+          bridge.toast(I.t("templates.import_complete_added_skipped_identical_templates_084f95", { p0: result.added, p1: result.skipped }));
           await reload();
-        } catch (e) { if (m.isConnected) error(e.message); }
+        } catch (e) { if (m.isConnected) error(I.detail(e)); }
         finally { loading = false; el('import').disabled = false; renderDetail(); }
       });
       input.click();
