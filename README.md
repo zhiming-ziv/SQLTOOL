@@ -68,6 +68,7 @@ SQLTOOL/
 │   ├── css/app.css         样式（深色 / SSMS 经典浅色双主题）
 │   ├── js/engine.js        引擎适配层 + IndexedDB 持久化
 │   ├── js/app.js           主逻辑（对象树、编辑器、结果网格、导入导出）
+│   ├── js/templates.js     SQL 模板库（本地存储、搜索管理、JSON 导入导出）
 │   ├── selftest.html       引擎自检页（26 项断言）
 │   └── vendor/             sql.js（SQLite 3.45.2 的 WebAssembly 版本，离线可用）
 ├── demo/index.html         SSMS 界面还原稿（纯静态，模拟数据）
@@ -80,7 +81,8 @@ SQLTOOL/
 │   ├── connection-regression.js  查询及编辑的连接归属回归测试
 │   ├── driver-regression.js 驱动参数、结果集与 SQL 分句回归测试
 │   ├── import-regression.js 文件导入的连接归属与数据映射回归测试
-│   └── file-ui-test.js     浏览器真实文件导入导出测试
+│   ├── file-ui-test.js     浏览器真实文件导入导出测试
+│   └── template-test.js    SQL 模板库与编辑器集成测试
 └── shots/                  测试截图、日志和压测结果（不提交）
 ```
 
@@ -140,6 +142,40 @@ SQLTOOL/
 - 支持多语句脚本一次执行（分号切分，正确跳过字符串 / 行注释 / 块注释 / 引号标识符）
 - 真实错误消息（来自数据库引擎本身）
 - `EXPLAIN QUERY PLAN`（SQLite）/ `EXPLAIN` 显示真实执行计划
+
+### SQL 模板库
+
+- 工具栏的 **「保存模板」** 或「工具 → 保存为 SQL 模板」：有选区时保存选区，否则保存整篇 SQL，保留空白、注释与换行。
+- 工具栏的 **「模板库」** 或「工具 → SQL 模板库」：新建、编辑、复制、删除模板；按名称、标签、说明或 SQL 正文搜索，按数据库方言筛选。
+- 每个模板包含名称、SQL 正文、方言、标签、说明及创建 / 修改时间。模板编辑窗口支持 `Ctrl+S` 保存。
+- 预览后可 **「在新标签页打开」**，或插入打开模板库时的光标位置；原编辑器有选区时，按钮明确显示 **「替换选中 SQL」**。
+  原查询窗口或内容发生变化后，会拒绝过期插入，防止覆盖其他查询。
+- 打开、插入及导入模板都不会执行 SQL。点击编辑器的「执行」时，使用工作台**当前连接和数据库**；方言用于分类，不会自动转换 SQL。
+- 模板保存在独立的浏览器 IndexedDB 中，不占用数据库连接配置；刷新后保留。同一浏览器的相同访问地址（协议、主机、端口）共享模板库，换地址或设备可通过 JSON 迁移。
+  多个页面编辑同一模板时会检查版本，旧窗口不能覆盖或删除较新的记录；可点击「刷新」获取最新列表。
+
+**导入导出**：导出当前搜索 / 方言筛选结果为 `sqltool-templates.json`。导入先校验全部记录，再一次性追加；名称、正文、方言、说明和标签均相同的模板会跳过，同名但内容不同的模板作为独立记录保留，不覆盖已有模板。
+文件使用以下格式（可选字段为 `dialect`、`tags`、`description`）：
+
+```json
+{
+  "format": "sqltool-templates",
+  "version": 1,
+  "templates": [
+    {
+      "name": "查看 SQLite 表",
+      "sql": "SELECT name FROM sqlite_master WHERE type = 'table';",
+      "dialect": "sqlite",
+      "tags": ["常用", "结构查询"],
+      "description": "列出当前 SQLite 数据库的表名"
+    }
+  ]
+}
+```
+
+方言值支持 `all`、`sqlite`、`mysql`、`postgres`、`mssql`，省略时使用 `all`（通用 SQL）。
+标签以数组保存，单个标签不包含逗号；在编辑窗口中用逗号分隔多个标签。
+最多保存 1,000 个模板，单个 SQL 正文不超过 500,000 个字符，导入 / 导出文件不超过 10 MB；较大的模板库可筛选后分批导出。
 
 ### 结果网格（右下）
 - 表头点击排序；单击选中行，`Ctrl` 加选、`Shift` 连选（支持多行）
@@ -289,6 +325,11 @@ node tools/import-regression.js
 
 # 自动启动独立服务和浏览器：真实文件导入导出（需安装 Chrome）
 node tools/file-ui-test.js
+
+# 自动启动独立服务和浏览器：模板管理、IndexedDB、文件交换及编辑器集成
+# 使用临时浏览器配置，不接触日常浏览器中的模板；需 Node.js 22.5+ 和 Chrome
+npm run test:templates
+# Windows PowerShell 若阻止 npm.ps1，可使用 npm.cmd run test:templates
 
 # 自动启动独立服务，使用临时 SQLite 库；默认逐档测试 1/8/32/64/128 并发
 node tools/concurrency-test.js

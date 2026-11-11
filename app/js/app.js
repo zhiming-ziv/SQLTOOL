@@ -898,6 +898,45 @@
       activateDoc(d.id);
     }
   }
+
+  function templateBridge() {
+    const originalDoc = doc(), originalSql = sqlEl.value;
+    const start = sqlEl.selectionStart, end = sqlEl.selectionEnd;
+    return {
+      openModal, toast, download,
+      canInsert: !!originalDoc,
+      selection: end > start,
+      target: () => {
+        const c = conn(), database = currentDbArg(c);
+        return { label: c ? c.name + (database ? ' / ' + database : '') : '未连接', dialect: c ? c.engine.dialect : 'all' };
+      },
+      open: template => {
+        const d = newDoc(template.sql, template.name + '.sql');
+        d.dirty = true; renderDocs();
+        toast('模板已在新标签页打开');
+      },
+      insert: template => {
+        if (!originalDoc || !state.docs.includes(originalDoc) || doc() !== originalDoc || sqlEl.value !== originalSql) {
+          throw new Error('查询窗口或内容已变化，请重新打开模板库后插入');
+        }
+        sqlEl.setRangeText(template.sql, start, end, 'end');
+        originalDoc.sql = sqlEl.value; originalDoc.dirty = true; originalDoc.pendingEdit = null;
+        acClose(); renderDocs(); updateEditor(); sqlEl.focus();
+        toast(end > start ? '已替换选中的 SQL' : '模板已插入光标处');
+      }
+    };
+  }
+
+  function saveSqlTemplate() {
+    const d = doc();
+    if (!d) { toast('没有可保存的查询窗口', true); return; }
+    const start = sqlEl.selectionStart, end = sqlEl.selectionEnd;
+    const sql = end > start ? sqlEl.value.slice(start, end) : sqlEl.value;
+    if (!sql.trim()) { toast('请选择或输入要保存的 SQL', true); return; }
+    const bridge = templateBridge();
+    S.Templates.saveEditor(bridge, { name: d.title.replace(/\.sql$/i, '').slice(0, 120), sql, dialect: bridge.target().dialect });
+  }
+
   function showDdl(ddl, title, wide) {
     const text = ddl || '-- 该对象没有可用的 DDL';
     return showDdlAsync(title, () => text, wide);
@@ -2724,6 +2763,8 @@
       showDbMenu(r.left, r.bottom + 2);
     },
     'new-query': () => newDoc(),
+    'templates': () => S.Templates.openLibrary(templateBridge()),
+    'save-template': saveSqlTemplate,
     'open-db': () => pickFile('.db,.sqlite,.sqlite3', importDbFile),
     'import-csv': () => pickSelectedCsvFile(),
     'run-script': () => pickScriptFile(),

@@ -67,6 +67,8 @@
     <div class="m-item">工具(T)
       <div class="dropdown">
         <div class="d-item" data-action="new-conn">连接管理器...</div>
+        <div class="d-item" data-action="templates">SQL 模板库...</div>
+        <div class="d-item" data-action="save-template">保存为 SQL 模板...</div>
         <div class="d-item" data-action="export-db">导出数据库</div>
         <div class="d-sep"></div>
         <div class="d-item" data-action="clear-db">清空当前数据库</div>
@@ -97,6 +99,8 @@
       <svg viewBox="0 0 16 16"><path d="M3.5 2.4 13 8l-9.5 5.6z" fill="#4E9A3F" stroke="#2F742C" stroke-width="1"/></svg>
       <span class="tb-label">执行</span>
     </div>
+    <button class="tb-btn tpl-entry" data-action="templates" title="查找、管理并复用 SQL 模板">模板库</button>
+    <button class="tb-btn tpl-entry" data-action="save-template" title="保存选中的 SQL；没有选区时保存整篇">保存模板</button>
     <div class="tb-btn" data-action="explain" title="显示执行计划 (Ctrl+F5)">
       <svg viewBox="0 0 16 16"><path d="M2 2h5l4 6v6H2z" fill="none" stroke="#4E9A3F" stroke-width="1.3"/><path d="M11 2h3v3" fill="none" stroke="#4E9A3F" stroke-width="1.3"/></svg>
     </div>
@@ -227,6 +231,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="js/engine.js"></script>
+<script src="js/templates.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
