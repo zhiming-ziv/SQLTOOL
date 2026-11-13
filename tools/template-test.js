@@ -153,7 +153,8 @@ function check(name, condition, detail) {
     check('空白 SQL 被拒绝', !await ev('!!document.querySelector(".template-editor")'));
     check('模板不会混入数据库连接存储', (await ev('SqlTool.Store.metaKeys()')).length === 0);
 
-    await send('Page.reload'); await wait('window.__booted === true', '刷新恢复');
+    // 重载前给旧页面打标记：旧页面上 __booted 已经是 true，不等标记消失会把旧页面误判为新页面已加载
+    await ev('window.__staleDoc=1'); await send('Page.reload'); await wait('!window.__staleDoc && window.__booted === true', '刷新恢复');
     check('刷新页面后模板仍完整保留', (await list()).length === 2 && (await list()).some(t => t.sql === raw));
     check('恢复模板不会创建额外数据库连接', await ev('document.querySelectorAll("#tree .node[data-type=conn]").length') === 0);
     await openLibrary();
