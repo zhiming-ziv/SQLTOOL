@@ -115,6 +115,7 @@
   "app.execution_plan_generated_engine_12b827": "<span class=\"ok\">✓ Execution plan generated</span>\n<span class=\"dim\">Engine: {p0}</span>",
   "app.the_engine_returned_no_execution_plan_061222": "<span class=\"warn\">The engine returned no execution plan</span>",
   "app.execution_plan_2619dd": "Execution plan",
+  "app.blob_cells_not_editable_5c8e21": "BLOB cells cannot be edited inline; use an SQL statement instead",
   "app.explain_statement_column_4d2b8e": "Statement",
   "app.explain_statement_failed_8e1f3c": "Statement {p0}: {p1}",
   "app.explain_not_supported_dialect_7c1e4a": "Execution plans are not supported for this dialect: {p0}",

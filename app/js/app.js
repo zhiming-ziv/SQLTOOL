@@ -641,6 +641,18 @@
     else if (row._colsLazy) loadTableColumns(c, row);
   }
 
+  /** 树节点所属的连接 ID：节点自身没有时沿祖先节点向上找（过程 / 函数 / 列等子节点） */
+  function nodeConnId(row) {
+    let li = row && row.closest('li');
+    if (row && row._connId) return row._connId;
+    while (li) {
+      const head = li.querySelector(':scope > .node');
+      if (head && head._connId) return head._connId;
+      li = li.parentElement && li.parentElement.closest('li');
+    }
+    return null;
+  }
+
   function selectConnection(row) {
     state.activeConnId = row._connId;
     $$('#tree .node').forEach(n => n.classList.remove('selected'));
@@ -683,6 +695,9 @@
     const row = e.target.closest('.node');
     if (!row || !row._k) return;
     const k = row._k;
+    // 先切到节点所属的连接（与右键菜单一致）：树里同时展开多个连接时，
+    // 否则查询会发往当前活动连接，同名表还会被当成可编辑结果，改动写进另一个库
+    useCtxTable({ connId: nodeConnId(row), _db: k._db });
     // 带上该节点所属的数据库，避免跨库浏览时打开到当前库的同名表
     if (k.type === 'table') openTableQuery(k.name, { database: k._db });
     else if (k.type === 'view') openTableQuery(k.name, { isView: true, database: k._db });
@@ -790,10 +805,10 @@
   /** 按当前连接方言引用标识符 */
   function qid(name, c) { return S.quoteIdentFor(name, dialectOf(c || conn())); }
   /** 按方言生成「取前 n 行」查询：MSSQL 用 TOP，其余用 LIMIT */
-  function selectTopSql(name, n, c) {
+  function selectTopSql(name, n, c, db) {
     return dialectOf(c || conn()) === 'mssql'
-      ? 'SELECT TOP ' + n + ' * FROM ' + qid(name, c) + ';'
-      : 'SELECT * FROM ' + qid(name, c) + ' LIMIT ' + n + ';';
+      ? 'SELECT TOP ' + n + ' * FROM ' + tableRef(name, c, db) + ';'
+      : 'SELECT * FROM ' + tableRef(name, c, db) + ' LIMIT ' + n + ';';
   }
 
   /**
@@ -834,30 +849,30 @@
       case 'refresh': await doRefresh(); break;
       case 'top1000': openTableQuery(d.name, { database: d._db }); break;
       case 'count-rows': {
-        const result = await execSql('SELECT COUNT(*) AS row_count FROM ' + qid(d.name) + ';', { database: db });
+        const result = await execSql('SELECT COUNT(*) AS row_count FROM ' + tableRef(d.name, null, d._db) + ';', { database: db });
         if (!result || result.error) toast((result && result.error) || I.t("app.row_count_failed_bf92c7"), true);
         else toast(I.t("app.rows_18da38", { p0: d.name, p1: result.sets[0].values[0][0] }));
         break;
       }
       case 'edit-data': openTableQuery(d.name, { database: d._db }); break;
       case 'show-ddl': showDdl(d._table && d._table.ddl, d.name); break;
-      case 'script-select': insertQuery(selectTopSql(d.name, 100)); break;
+      case 'script-select': insertQuery(selectTopSql(d.name, 100, null, d._db)); break;
       case 'script-create': showDdl(d._table && d._table.ddl || '-- 无 DDL', I.t("app.create_script_a8a3c2", { p0: d.name }), true); break;
       case 'script-insert': await scriptInsert(d.name, db); break;
       case 'export-db': await exportDb(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
       case 'run-script': pickScriptFile(d.kind === 'conn' ? state.conns.find(c => c.id === d.id) || null : conn()); break;
       case 'import-csv-table': pickCsvFile(d.name, db); break;
       case 'export-csv-table': await exportTableCsv(d.name, db); break;
-      case 'truncate': await confirmThen(I.t("app.clear_table_0a1b2b"), I.t("app.delete_from_will_delete_all_rows_2f0232", { p0: esc(qid(d.name)) }), async () => {
+      case 'truncate': await confirmThen(I.t("app.clear_table_0a1b2b"), I.t("app.delete_from_will_delete_all_rows_2f0232", { p0: esc(tableRef(d.name, null, d._db)) }), async () => {
         // 先刷新再提示：doRefresh 自己会弹「已刷新」，放在后面会盖掉结果提示
-        const okDel = await execOrToast('DELETE FROM ' + qid(d.name) + ';', I.t("app.clear_table_0a1b2b"), db);
+        const okDel = await execOrToast('DELETE FROM ' + tableRef(d.name, null, d._db) + ';', I.t("app.clear_table_0a1b2b"), db);
         if (okDel) await persistConn(conn());
         await doRefresh();
         if (okDel) toast(I.t("app.cleared_e5092f", { p0: d.name }));
         else toast(lastExecError, true);
       }); break;
-      case 'drop-table': await confirmThen(I.t("app.drop_table_d54572"), I.t("app.drop_table_will_be_executed_this_1adebb", { p0: esc(qid(d.name)) }), async () => {
-        const okDrop = await execOrToast('DROP TABLE ' + qid(d.name) + ';', I.t("app.drop_table_d54572"), db);
+      case 'drop-table': await confirmThen(I.t("app.drop_table_d54572"), I.t("app.drop_table_will_be_executed_this_1adebb", { p0: esc(tableRef(d.name, null, d._db)) }), async () => {
+        const okDrop = await execOrToast('DROP TABLE ' + tableRef(d.name, null, d._db) + ';', I.t("app.drop_table_d54572"), db);
         if (okDrop) await persistConn(conn());
         await doRefresh();
         if (okDrop) toast(I.t("app.deleted_0bafa8", { p0: d.name }));
@@ -1692,8 +1707,8 @@
     const head = dialect === 'mssql' ? 'SELECT TOP 1000 ' : 'SELECT ';
     const tail = dialect === 'mssql' ? ';' : ' LIMIT 1000;';
     const sql = useRowid
-      ? 'SELECT rowid AS __rid, * FROM ' + q(name) + ' LIMIT 1000;'
-      : head + '* FROM ' + q(name) + tail;
+      ? 'SELECT rowid AS __rid, * FROM ' + tableRef(name, c, db) + ' LIMIT 1000;'
+      : head + '* FROM ' + tableRef(name, c, db) + tail;
 
     const d = newDoc(sql, name + '.sql');
     d.isView = isView;
@@ -1732,6 +1747,31 @@
       }
     }
     return null;
+  }
+
+  /** 在连接的 schema 缓存里找表或视图（含跨库缓存） */
+  function findSchemaObject(name, db, c) {
+    if (!c) return null;
+    const pick = sc => sc && [].concat(sc.tables || [], sc.views || []).find(x => x.name === name);
+    return (db && c.schemas && pick(c.schemas[db])) || pick(c.schema) ||
+      (c.schemas ? Object.values(c.schemas).map(pick).find(Boolean) : null) || null;
+  }
+
+  /**
+   * 按方言引用表名。PG / SQL Server 非默认架构的表在树里叫「架构.表」，
+   * 必须拆成 [sales].[orders] / "sales"."orders"，整体引用成 [sales.orders] 会找不到对象。
+   * 只在表对象的 schema 字段与名字前缀吻合时才拆，默认架构下名字本身带点的表保持整体引用。
+   */
+  function tableRef(name, c, db) {
+    c = c || conn();
+    const dialect = dialectOf(c);
+    const quote = n => S.quoteIdentFor(n, dialect);
+    const s = String(name);
+    if (dialect === 'postgres' || dialect === 'mssql') {
+      const t = findSchemaObject(s, db, c);
+      if (t && t.schema && s.startsWith(t.schema + '.')) return quote(t.schema) + '.' + quote(s.slice(t.schema.length + 1));
+    }
+    return quote(s);
   }
 
   /* ==========================================================
@@ -1785,7 +1825,8 @@
 
     const cols = d.result.columns;
     const table = findTable(d.editTable || '', d.editDb);
-    const colMeta = table ? table.columns : [];
+    // 远程表的列是懒加载的：刷新对象树后表对象没有 columns，不能假定一定是数组
+    const colMeta = table && Array.isArray(table.columns) ? table.columns : [];
 
     const tbl = document.createElement('table');
     tbl.className = 'grid';
@@ -1931,7 +1972,12 @@
     const target = editTarget(d);
     if (!target) return;
     d = target.data;
-    const old = td.classList.contains('null') ? null : td.textContent;
+    // 编辑框必须预填原始值，不能取单元格显示文本：整数显示带千分位（1,234,567），
+    // BLOB 显示的是「BLOB (n 字节)」占位，直接回写会把整数存成文本、把二进制覆盖成占位文字
+    const colIdx = target.result.columns.indexOf(colName);
+    const raw = colIdx >= 0 && target.result.values[rowIdx] ? target.result.values[rowIdx][colIdx] : null;
+    if (raw instanceof Uint8Array) { toast(I.t("app.blob_cells_not_editable_5c8e21"), true); return; }
+    const old = raw === null || raw === undefined ? null : String(raw);
     td.classList.add('editing');
     const inp = document.createElement('input');
     inp.value = old === null ? '' : old;
@@ -1951,10 +1997,12 @@
       const c = target.context.connection;
       const q = n => S.quoteIdentFor(n, dialectOf(c));
       const e = target.context.engine;
-      const val = nv === '' ? null : nv;
+      // 原值是数字且输入仍是合法数字时按数字写回，保持列的数值类型
+      const val = nv === '' ? null
+        : (typeof raw === 'number' && /^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$/.test(nv) ? Number(nv) : nv);
       try {
         const w = rowWhere(d, rowIdx, q);
-        const sql = 'UPDATE ' + q(d.editTable) + ' SET ' + q(colName) + ' = ? WHERE ' + w.where;
+        const sql = 'UPDATE ' + tableRef(d.editTable, c, d.editDb) + ' SET ' + q(colName) + ' = ? WHERE ' + w.where;
         const res = await e.run(sql, [val].concat(w.params), target.context.database);
         // 0 行受影响：行定位条件没匹配到任何行（行已被删除 / 改动，或按全部列原值匹配时
         // BLOB、日期精度、浮点数等原值无法精确比较）。此时不能假装成功改掉本地单元格。
@@ -2062,7 +2110,7 @@
         if (!names.length) { toast(I.t("app.fill_in_at_least_one_column_a4977a"), true); return true; }
         busy(true, I.t("app.inserting_2a9ad4"));
         try {
-          const sql = 'INSERT INTO ' + q(d.editTable) +
+          const sql = 'INSERT INTO ' + tableRef(d.editTable, c, d.editDb) +
             ' (' + names.map(q).join(', ') + ') VALUES (' + ph.join(', ') + ')';
           const r = await target.context.engine.run(sql, params, target.context.database);
           toast(I.t("app.rows_inserted_bbc58f", { p0: (r && r.rowsAffected) || 1 }));
@@ -2105,7 +2153,7 @@
         for (const i of idxs) {
           if (!contextOpen(target.context)) { toast(I.t("app.connection_closed_deletion_stopped_d368b3"), true); return; }
           const w = rowWhere(d, i, q);
-          const r = await target.context.engine.run('DELETE FROM ' + q(d.editTable) + ' WHERE ' + w.where,
+          const r = await target.context.engine.run('DELETE FROM ' + tableRef(d.editTable, c, d.editDb) + ' WHERE ' + w.where,
             w.params, target.context.database);
           n += (r && r.rowsAffected) || 0;
         }
@@ -2137,8 +2185,13 @@
     if (!tbody || !d || !d.result) { toast(I.t("app.no_data_to_copy_251384"), true); return; }
     const trs = Array.from(tbody.querySelectorAll('tr.selected'));
     if (!trs.length) { toast(I.t("app.select_the_rows_to_copy_first_a863c7"), true); return; }
-    const lines = trs.map(tr => Array.from(tr.querySelectorAll('td')).slice(1)
-      .map(td => td.classList.contains('null') ? '' : td.textContent).join('\t'));
+    // 复制原始值而不是显示文本（显示文本的整数带千分位）
+    const lines = trs.map(tr => Array.from(tr.querySelectorAll('td')).slice(1).map(td => {
+      const row = d.result.values[+td.dataset.row];
+      const v = row ? row[+td.dataset.col] : null;
+      if (v === null || v === undefined) return '';
+      return v instanceof Uint8Array ? td.textContent : String(v);
+    }).join('\t'));
     copyText(lines.join('\n'));
     toast(I.t("app.rows_copied_5ef708", { p0: lines.length }));
   }
@@ -2236,7 +2289,7 @@
   }
 
   async function exportTableCsv(name, db) {
-    const r = await execSql('SELECT * FROM ' + qid(name) + ';', db ? { database: db } : undefined);
+    const r = await execSql('SELECT * FROM ' + tableRef(name, null, db) + ';', db ? { database: db } : undefined);
     if (!r || r.error) { toast(I.t("app.export_failed_a53238", { p0: (r && r.error) || '' }), true); return; }
     if (!r.sets.length) { toast(I.t("app.table_is_empty_83c62b"), true); return; }
     const set = r.sets[r.sets.length - 1];
@@ -2302,7 +2355,7 @@
       async () => {
         if (!contextOpen(context)) { toast(I.t("app.the_import_connection_is_closed_732486"), true); return; }
         const ph = useCols.map(() => '?').join(', ');
-        const sql = 'INSERT INTO ' + qid(tableName, c0) + ' (' + useCols.map(x => qid(x, c0)).join(', ') + ') VALUES (' + ph + ')';
+        const sql = 'INSERT INTO ' + tableRef(tableName, c0, db) + ' (' + useCols.map(x => qid(x, c0)).join(', ') + ') VALUES (' + ph + ')';
         const idxs = mapping.map(col => col.index);
         let ok = 0, fail = 0, firstErr = '';
         // 只有浏览器内 SQLite（有 e.db）才包一层本地事务；远程引擎每条语句独立执行
@@ -2386,7 +2439,7 @@
   }
 
   async function scriptInsert(name, db) {
-    const r = await execSql(selectTopSql(name, 200), db ? { database: db } : undefined);
+    const r = await execSql(selectTopSql(name, 200, null, db), db ? { database: db } : undefined);
     if (!r || r.error || !r.sets.length) { toast(I.t('app.scriptFailed'), true); return; }
     const set = r.sets[r.sets.length - 1];
     const q = v => v === null || v === undefined ? 'NULL'
@@ -2394,7 +2447,7 @@
         : "'" + String(v).replace(/'/g, "''") + "'";
     let out = '-- INSERT 脚本：' + name + '（前 ' + set.values.length + ' 行）\n';
     set.values.forEach(row => {
-      out += 'INSERT INTO ' + qid(name) + ' (' + set.columns.map(x => qid(x)).join(', ') + ') VALUES (' + row.map(q).join(', ') + ');\n';
+      out += 'INSERT INTO ' + tableRef(name, null, db) + ' (' + set.columns.map(x => qid(x)).join(', ') + ') VALUES (' + row.map(q).join(', ') + ');\n';
     });
     showDdl(out, I.t('app.insertScript', { name }), true);
   }

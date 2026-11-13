@@ -115,6 +115,7 @@
   "app.execution_plan_generated_engine_12b827": "<span class=\"ok\">✓ 执行计划已生成</span>\n<span class=\"dim\">引擎：{p0}</span>",
   "app.the_engine_returned_no_execution_plan_061222": "<span class=\"warn\">引擎未返回执行计划</span>",
   "app.execution_plan_2619dd": "执行计划",
+  "app.blob_cells_not_editable_5c8e21": "BLOB 列不支持行内编辑，请用 SQL 语句修改",
   "app.explain_statement_column_4d2b8e": "语句",
   "app.explain_statement_failed_8e1f3c": "第 {p0} 条语句：{p1}",
   "app.explain_not_supported_dialect_7c1e4a": "该方言暂不支持执行计划：{p0}",

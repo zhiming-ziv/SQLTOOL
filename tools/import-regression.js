@@ -60,6 +60,7 @@ async function fixture(fn) {
       findTable: (name, db, c) => ({ columns: columnsCached ? columns : null }),
       toast: message => messages.push(String(message)), esc: String, busy: noop,
       qid: name => '"' + name.replace(/"/g, '""') + '"',
+      tableRef: name => '"' + String(name).replace(/"/g, '""') + '"',
       confirmThen: async (title, body, callback) => { confirmCallback = callback; },
       persistConn: async c => persisted.push(c.id),
       refreshConnSchema: async (c, db) => refreshed.push({ connection: c.id, database: db }),
