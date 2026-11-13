@@ -9,7 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, '../app/js/app.js'), 'utf8')
 const names = ['queryContext', 'contextOpen', 'contextActive', 'currentDbArg', 'execSql', 'currentSql',
   'runQuery', 'explainQuery', 'openTableQuery', 'dialectOf', 'findTable', 'rowWhere', 'editTarget',
   'editTargetCurrent', 'startEdit', 'reloadTableData', 'tableColumnsFor', 'addRowDialog',
-  'deleteSelectedRows', 'exportDb', 'handleAction'];
+  'deleteSelectedRows', 'exportDb', 'handleAction', 'sqlTokens', 'splitSqlStatements'];
 const code = names.map(name => {
   const start = source.search(new RegExp('  (?:async )?function ' + name + '\\('));
   assert(start >= 0, '找不到函数：' + name);

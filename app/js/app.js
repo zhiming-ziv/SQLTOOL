@@ -140,29 +140,128 @@
     return out;
   }
 
-  /* 轻量 SQL 格式化：主要关键字前换行 + 统一缩进 */
-  const NEWLINE_KW = /\b(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION(?:\s+ALL)?|LEFT\s+(?:OUTER\s+)?JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|INNER\s+JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|JOIN|ON|VALUES|SET|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b/gi;
-  function formatSql(src) {
-    let out = '';
+  /* ==========================================================
+   * SQL 分词：格式化与执行计划共用。
+   * 字符串、引号标识符、$$ 字符串与注释作为整体 token 原样保留，
+   * 后续处理只动「代码」部分，绝不改写其中的内容。
+   * ========================================================== */
+  function sqlTokens(src, dialect) {
+    const s = String(src), n = s.length, out = [];
+    let i = 0;
+    const push = (type, j) => { j = Math.min(Math.max(j, i + 1), n); out.push({ type, text: s.slice(i, j) }); i = j; };
+    while (i < n) {
+      const c = s[i], c2 = s.substr(i, 2);
+      if (/\s/.test(c)) { let j = i + 1; while (j < n && /\s/.test(s[j])) j++; push('ws', j); continue; }
+      // # 只在 MySQL 里是注释；SQL Server 的 #临时表 不能当注释
+      if (c2 === '--' || (c === '#' && dialect === 'mysql')) { const k = s.indexOf('\n', i); push('comment', k < 0 ? n : k); continue; }
+      if (c2 === '/*') { const k = s.indexOf('*/', i + 2); push('comment', k < 0 ? n : k + 2); continue; }
+      if (c === "'" || c === '"' || c === '`') {
+        let j = i + 1;
+        while (j < n) {
+          if (c === "'" && dialect === 'mysql' && s[j] === '\\') { j += 2; continue; }   // MySQL 反斜杠转义
+          if (s[j] === c) { if (s[j + 1] === c) { j += 2; continue; } j++; break; }
+          j++;
+        }
+        push(c === "'" ? 'string' : 'ident', j); continue;
+      }
+      // [方括号标识符]：MySQL / PG 里 [ 不是引号（PG 用作数组下标）
+      if (c === '[' && dialect !== 'mysql' && dialect !== 'postgres') {
+        let j = i + 1;
+        while (j < n) { if (s[j] === ']') { if (s[j + 1] === ']') { j += 2; continue; } j++; break; } j++; }
+        push('ident', j); continue;
+      }
+      // PostgreSQL 美元引号：$$...$$ / $tag$...$tag$
+      if (c === '$') {
+        const m = /^\$([A-Za-z_][\w]*)?\$/.exec(s.slice(i, i + 64));
+        if (m) { const k = s.indexOf(m[0], i + m[0].length); push('string', k < 0 ? n : k + m[0].length); continue; }
+      }
+      if (/[\w$\u00C0-\uFFFF]/.test(c)) { let j = i + 1; while (j < n && /[\w$\u00C0-\uFFFF]/.test(s[j])) j++; push('word', j); continue; }
+      push('punct', i + 1);
+    }
+    return out;
+  }
+
+  /** 按分号切分语句（字符串 / 注释 / 引号标识符里的分号不切），丢弃只有注释或空白的片段 */
+  function splitSqlStatements(src, dialect) {
+    const stmts = [];
+    let cur = [];
+    const flush = () => {
+      if (cur.some(t => t.type !== 'ws' && t.type !== 'comment')) stmts.push(cur.map(t => t.text).join('').trim());
+      cur = [];
+    };
+    sqlTokens(src, dialect).forEach(t => { if (t.type === 'punct' && t.text === ';') flush(); else cur.push(t); });
+    flush();
+    return stmts;
+  }
+
+  /* 轻量 SQL 格式化：主要子句关键字前换行 + 统一缩进；只调整代码部分的空白 */
+  const FMT_CLAUSES = [
+    ['LEFT', 'OUTER', 'JOIN'], ['RIGHT', 'OUTER', 'JOIN'], ['FULL', 'OUTER', 'JOIN'],
+    ['GROUP', 'BY'], ['ORDER', 'BY'], ['UNION', 'ALL'], ['LEFT', 'JOIN'], ['RIGHT', 'JOIN'], ['INNER', 'JOIN'],
+    ['FULL', 'JOIN'], ['CROSS', 'JOIN'], ['INSERT', 'INTO'], ['DELETE', 'FROM'],
+    ['FROM'], ['WHERE'], ['HAVING'], ['LIMIT'], ['OFFSET'], ['UNION'], ['JOIN'], ['ON'], ['VALUES'], ['SET'], ['UPDATE']
+  ];
+  const FMT_STMT_START = /^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH)$/i;
+  const FMT_CLAUSE_START = /^(FROM|WHERE|GROUP|ORDER|HAVING|LIMIT|OFFSET|VALUES|SET|ON|UNION|JOIN|LEFT|RIGHT|INNER|FULL|CROSS)$/i;
+
+  function formatSql(src, dialect) {
+    const toks = sqlTokens(src, dialect);
+    const lines = [[]];
+    const cur = () => lines[lines.length - 1];
+    const hasCode = parts => parts.some(p => p !== ' ');
+    const prevCode = t => { for (let k = t - 1; k >= 0; k--) if (toks[k].type !== 'ws' && toks[k].type !== 'comment') return toks[k]; return null; };
+    /** 从第 t 个 token 起匹配多词子句（词之间只允许空白），返回 { text, end } */
+    const matchClause = t => {
+      for (const words of FMT_CLAUSES) {
+        let k = t, ok = true;
+        for (let w = 0; w < words.length; w++) {
+          if (w > 0) { if (!toks[k + 1] || toks[k + 1].type !== 'ws') { ok = false; break; } k += 2; }
+          if (!toks[k] || toks[k].type !== 'word' || toks[k].text.toUpperCase() !== words[w]) { ok = false; break; }
+        }
+        if (ok) return { text: words.join(' '), end: k };
+      }
+      return null;
+    };
+    let paren = 0;
+    for (let t = 0; t < toks.length; t++) {
+      const tk = toks[t];
+      if (tk.type === 'ws') {
+        // 保留原有换行（最多一个空行）；行内空白压成一个空格
+        const nl = (tk.text.match(/\n/g) || []).length;
+        if (nl) { for (let k = 0; k < Math.min(nl, 2); k++) lines.push([]); }
+        else if (cur().length) cur().push(' ');
+        continue;
+      }
+      if (tk.type === 'punct') {
+        if (tk.text === '(') paren++;
+        else if (tk.text === ')') paren = Math.max(0, paren - 1);
+      }
+      // 只在括号外断行：EXTRACT(YEAR FROM d)、子查询等保持原样；t.from 这类限定名不当关键字
+      if (tk.type === 'word' && paren === 0) {
+        const p = prevCode(t);
+        const m = (!p || p.text !== '.') ? matchClause(t) : null;
+        if (m) {
+          if (hasCode(cur())) lines.push([]);
+          cur().push(m.text);
+          t = m.end;
+          continue;
+        }
+      }
+      cur().push(tk.text);
+    }
+    const out = [];
     let depth = 0;
-    const lines = String(src).split('\n');
-    lines.forEach(raw => {
-      let line = raw.replace(/\s+/g, ' ').trim();
-      if (!line) { out += '\n'; return; }
-      if (line.startsWith('--')) { out += line + '\n'; return; }
-      // 主关键字前换行
-      line = line.replace(NEWLINE_KW, m => '\n' + m.toUpperCase());
-      line.split('\n').forEach((seg, i) => {
-        let s = seg.trim();
-        if (!s) return;
-        if (/^(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE|ALTER|DROP)\b/i.test(s)) depth = 0;
-        if (/^(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|VALUES|SET|ON|UNION|.*JOIN)\b/i.test(s)) depth = 1;
-        const indent = '    '.repeat(depth);
-        if (i === 0 && out && !out.endsWith('\n')) out += '\n';
-        out += indent + s + '\n';
-      });
-    });
-    return out.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+    for (const parts of lines) {
+      while (parts.length && parts[0] === ' ') parts.shift();
+      while (parts.length && parts[parts.length - 1] === ' ') parts.pop();
+      if (!parts.length) { if (out.length && out[out.length - 1] !== '') out.push(''); continue; }
+      const fw = /^[A-Za-z]+$/.test(parts[0]) || /^[A-Za-z]+ /.test(parts[0]) ? parts[0].split(' ')[0] : '';
+      if (FMT_STMT_START.test(fw)) depth = 0;
+      else if (FMT_CLAUSE_START.test(fw)) depth = 1;
+      out.push('    '.repeat(depth) + parts.join(''));
+    }
+    while (out.length && out[out.length - 1] === '') out.pop();
+    return out.join('\n') + '\n';
   }
 
   /* ==========================================================
@@ -1014,7 +1113,8 @@
       const d = doc(); if (d) { d.dirty = true; renderDocs(); }
       updateEditor();
     }
-    if (e.key === 'F5') { e.preventDefault(); runQuery(); }
+    // Ctrl+F5 只出执行计划：F5 分支必须排除 Ctrl，否则会先把语句真正执行一遍
+    if (e.key === 'F5' && !e.ctrlKey) { e.preventDefault(); runQuery(); }
     if (e.ctrlKey && e.key === 'F5') { e.preventDefault(); explainQuery(); }
     if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runQuery(); }
   });
@@ -1490,30 +1590,75 @@
     const context = queryContext(conn());
     if (!d || !contextOpen(context)) return;
     d.sql = sqlEl.value;
-    const isDuck = context.connection.engineKind === 'duckdb';
+    const dialect = dialectOf(context.connection);
     const cur = currentSql();
     if (!cur.sql) { toast(I.t("app.enter_a_sql_statement_36960f"), true); return; }
-    const sql = (isDuck ? 'EXPLAIN ' : 'EXPLAIN QUERY PLAN ') + cur.sql;
+    // 按方言选 EXPLAIN 前缀；这些形式都只生成计划、不执行语句。
+    // SQL Server 需要单独批次 SET SHOWPLAN_TEXT ON，这里不支持（未经真库验证）
+    const PREFIX = { sqlite: 'EXPLAIN QUERY PLAN ', duckdb: 'EXPLAIN ', mysql: 'EXPLAIN ', postgres: 'EXPLAIN ' };
+    const prefix = PREFIX[dialect];
+    const engineLabel = dialect === 'sqlite' ? 'SQLite EXPLAIN QUERY PLAN' : (dialect === 'duckdb' ? 'DuckDB' : dialect === 'mysql' ? 'MySQL' : 'PostgreSQL') + ' EXPLAIN';
+    // 必须逐条加前缀：只给第一条加 EXPLAIN 时，后面的语句会被真正执行（INSERT 会写进库）
+    const stmts = splitSqlStatements(cur.sql, dialect);
+    let refuse = null;
+    if (!prefix) refuse = I.t("app.explain_not_supported_dialect_7c1e4a", { p0: dialect });
+    // EXPLAIN + ANALYZE… 在 MySQL / PG 里会变成 EXPLAIN ANALYZE（真实执行），直接拒绝
+    else if (stmts.some(st => /^ANALY[SZ]E\b/i.test(sqlTokens(st, dialect).filter(t => t.type !== 'ws' && t.type !== 'comment').map(t => t.text).join(' ')))) {
+      refuse = I.t("app.explain_analyze_refused_3b9d21");
+    }
+    if (refuse) {
+      d.connId = context.connId; d.resultContext = context;
+      d.result = null; d.activeRes = 'msg';
+      d.message = I.t("app.could_not_generate_execution_plan_6647c3", { p0: I.escape(refuse) });
+      d.editTable = null; d.editCols = null; d.rowids = null;
+      renderResult();
+      return;
+    }
     const version = d.queryVersion = (d.queryVersion || 0) + 1;
     d.queryRunning = true;
     renderResult();
-    let r = await execSql(sql, { context });
-    if (!state.docs.includes(d) || d.queryVersion !== version) return;
+    // 逐条生成计划：引擎对「计划为空」的语句不返回结果集，整段执行时结果集与语句对不上
+    const parts = [];
+    let r = null;
+    for (let n = 0; n < stmts.length; n++) {
+      const one = await execSql(prefix + stmts[n] + ';', { context });
+      if (!state.docs.includes(d) || d.queryVersion !== version) return;
+      if (!one || one.error) {
+        const msg = (one && one.error) || '';
+        r = { error: stmts.length > 1 ? I.t("app.explain_statement_failed_8e1f3c", { p0: n + 1, p1: msg }) : msg };
+        break;
+      }
+      (one.sets || []).forEach(set => parts.push({ no: n + 1, set }));
+    }
+    if (!r) r = { sets: parts.map(p => p.set) };
     d.queryRunning = false;
     if (!contextOpen(context)) r = { error: I.t("app.the_query_s_connection_has_been_5056bc") };
     d.connId = context.connId; d.resultContext = context;
+    d.activeRes = 'grid';
     if (!r || r.error) {
       d.result = null;
-      d.message = I.t("app.could_not_generate_execution_plan_6647c3", { p0: esc((r && r.error) || '') });
+      d.message = I.t("app.could_not_generate_execution_plan_6647c3", { p0: I.escape((r && r.error) || '') });
+      d.activeRes = 'msg';      // 出错时切到消息页，否则用户只看到空网格
     } else if (r.sets && r.sets.length) {
-      const set = r.sets[r.sets.length - 1];
-      d.result = { columns: set.columns, values: set.values };
-      d.message = I.t("app.execution_plan_generated_engine_12b827", { p0: isDuck ? 'DuckDB EXPLAIN' : 'SQLite EXPLAIN QUERY PLAN' });
+      const sets = r.sets;
+      const same = sets.every(s => JSON.stringify(s.columns) === JSON.stringify(sets[0].columns));
+      if (stmts.length > 1 && same) {
+        // 多条语句的计划合并到一张表，首列标出语句序号（不用 #，避免和网格自带的行号列混淆）
+        d.result = {
+          columns: [String(I.t("app.explain_statement_column_4d2b8e"))].concat(sets[0].columns),
+          values: [].concat(...parts.map(p => p.set.values.map(v => [p.no].concat(v))))
+        };
+      } else {
+        const set = sets[sets.length - 1];
+        d.result = { columns: set.columns, values: set.values };
+      }
+      const label = stmts.length > 1 ? I.join([engineLabel, ' · ', I.t("app.explain_statements_count_9a4c17", { p0: stmts.length })]) : engineLabel;
+      d.message = I.t("app.execution_plan_generated_engine_12b827", { p0: label });
     } else {
       d.result = null;
       d.message = I.t("app.the_engine_returned_no_execution_plan_061222");
+      d.activeRes = 'msg';
     }
-    d.activeRes = 'grid';
     d.editTable = null; d.editCols = null; d.rowids = null;
     if (doc() === d) renderResult();
     if (doc() === d && contextActive(context)) status(I.t("app.execution_plan_2619dd"));
@@ -2697,7 +2842,7 @@
     'select-all': () => { sqlEl.focus(); sqlEl.select(); },
     'format': () => {
       const d = doc(); if (!d) return;
-      sqlEl.value = formatSql(sqlEl.value);
+      sqlEl.value = formatSql(sqlEl.value, dialectOf(conn()));
       d.sql = sqlEl.value; d.dirty = true;
       renderDocs(); updateEditor();
       toast(I.t("app.sql_formatted_2b2630"));

@@ -212,15 +212,15 @@ function check(name, condition, detail) {
     }
     await close();await change('en');
     const saved=await ev(`(async()=>JSON.stringify(await SqlTool.Templates.store.list()))()`);
-    await send('Page.reload');await wait('window.__booted === true','语言偏好刷新恢复');
+    await ev('window.__staleDoc=1');await send('Page.reload');await wait('!window.__staleDoc && window.__booted === true','语言偏好刷新恢复');
     check('刷新保留英文偏好与全部模板',await ev(`(async()=>SqlToolI18n.locale==='en' && document.documentElement.lang==='en' && JSON.stringify(await SqlTool.Templates.store.list())===${JSON.stringify(saved)})()`));
-    await send('Page.navigate',{url:base+'/'});await wait(`!!window.SqlToolI18n`,'入口页');
+    await ev('window.__staleDoc=1');await send('Page.navigate',{url:base+'/'});await wait(`!window.__staleDoc && !!window.SqlToolI18n`,'入口页');
     check('入口页沿用同源语言偏好',await ev(`document.title==='SQLTool — Browser Database Workbench'`));
     await change('zh-TW');check('入口页可即时切换繁体中文',await ev(`document.title.includes('資料庫')`));
-    await ev(`localStorage.setItem('sqltool.language','invalid')`);await send('Page.reload');await wait(`!!window.SqlToolI18n`,'非法偏好回退');
+    await ev(`localStorage.setItem('sqltool.language','invalid')`);await ev('window.__staleDoc=1');await send('Page.reload');await wait(`!window.__staleDoc && !!window.SqlToolI18n`,'非法偏好回退');
     check('未知语言偏好回退简体中文',await ev(`SqlToolI18n.locale==='zh-CN' && SqlToolI18n.setLocale('fr')===false`));
     await send('Page.addScriptToEvaluateOnNewDocument',{source:`Storage.prototype.getItem=function(){throw new Error('blocked')};Storage.prototype.setItem=function(){throw new Error('blocked')};`});
-    await send('Page.reload');await wait('!!window.SqlToolI18n','禁用本地存储后初始化');
+    await ev('window.__staleDoc=1');await send('Page.reload');await wait('!window.__staleDoc && !!window.SqlToolI18n','禁用本地存储后初始化');
     await change('en');check('禁用本地存储仍可切换语言',await ev(`document.documentElement.lang==='en' && document.title==='SQLTool — Browser Database Workbench'`));
     check('缺失译文回退简体中文',await ev(`(()=>{const key='app.language',value=SqlToolI18n.dictionaries.en[key];delete SqlToolI18n.dictionaries.en[key];const text=String(SqlToolI18n.t(key));SqlToolI18n.dictionaries.en[key]=value;return text==='界面语言';})()`));
     check('多语言完整流程无未捕获异常',errors.length===0,errors);
